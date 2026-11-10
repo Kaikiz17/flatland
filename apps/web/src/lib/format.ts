@@ -30,3 +30,12 @@ export const flag = (cc: string) => cc.toUpperCase().replace(/./g, (c) => String
 export const isAddr = (a: string): a is Address => /^0x[0-9a-fA-F]{40}$/.test(a);
 export const ZERO = '0x0000000000000000000000000000000000000000' as const;
 export const BAR_COLORS = ['#ff5a36', '#0fa3a3', '#f2b705', '#4f5bd5', '#c13584', '#2e9e5b', '#8a5a44', '#10203a'];
+
+/** Query string for share/card URLs: wallet + unix seconds. */
+export function cardQuery(wallet?: string | null, ts?: number): string {
+  const p = new URLSearchParams();
+  if (wallet && /^0x[0-9a-fA-F]{40}$/.test(wallet)) p.set('w', wallet);
+  if (ts && Number.isFinite(ts) && ts > 0) p.set('t', String(Math.floor(ts > 1e12 ? ts / 1000 : ts)));
+  const s = p.toString();
+  return s ? `?${s}` : '';
+}

@@ -1,4 +1,4 @@
-/** 1:1 celebratory share posters (1080²) plus a landscape 1200×630 OG sibling for X. */
+/** 1:1 holographic collectible share posters (1080²) plus a landscape 1200×630 OG sibling for X. */
 import { signedHeadline, signedKindLabel } from '../../packages/core/src/prizeRules.ts';
 
 const wrap = (text: string, max: number, lines: number): string[] => {
@@ -16,6 +16,24 @@ const wrap = (text: string, max: number, lines: number): string[] => {
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const burnTxt = (n: number) => (Math.round(n * 100) / 100).toLocaleString('en-US');
 
+export const shortWallet = (a: string): string => {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(a)) return '';
+  return `${a.slice(0, 6)}…${a.slice(-4)}`;
+};
+
+/** '10 NOV 2026' in Africa/Lagos. `ts` is unix seconds. */
+export const formatCardDate = (ts: number): string => {
+  if (!Number.isFinite(ts) || ts <= 0) return '';
+  const sec = ts > 1e12 ? Math.floor(ts / 1000) : Math.floor(ts);
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Lagos', day: 'numeric', month: 'short', year: 'numeric' }).formatToParts(new Date(sec * 1000));
+  const day = parts.find((p) => p.type === 'day')?.value ?? '';
+  const mon = (parts.find((p) => p.type === 'month')?.value ?? '').toUpperCase();
+  const year = parts.find((p) => p.type === 'year')?.value ?? '';
+  return [day, mon, year].filter(Boolean).join(' ');
+};
+
+export const padSerial = (n: number) => `#${String(n).padStart(4, '0')}`;
+
 export interface VotedCardInput {
   title: string;
   letter: string;
@@ -23,6 +41,10 @@ export interface VotedCardInput {
   burnedWif: number;
   votes?: number;
   voterNo?: number;
+  wallet?: string;
+  ts?: number;
+  /** Option image as a data URI or same-origin / absolute href (/img/<hash>). */
+  image?: string;
 }
 export interface SignedCardInput {
   kind: number;
@@ -30,66 +52,141 @@ export interface SignedCardInput {
   burnedWif: number;
   position?: number;
   headline?: string;
+  wallet?: string;
+  ts?: number;
 }
 
-type Theme = { bg: string; glow: string; accent: string; ink: string; foil: string; tag: string };
+type Theme = { bg: string; glow: string; accent: string; ink: string; foil: string; tag: string; mid: string };
 
-const VOTED: Theme = { bg: '#12081c', glow: '#f2b705', accent: '#ff5a36', ink: '#fffaf0', foil: '#f2b705', tag: 'VOTED' };
+const VOTED: Theme = { bg: '#070512', glow: '#f2b705', accent: '#ff5a36', ink: '#fffaf0', foil: '#f2b705', tag: 'VOTED', mid: '#1a0a28' };
 const SIGN_THEMES: Theme[] = [
-  { bg: '#1a0608', glow: '#ff5a36', accent: '#ff5a36', ink: '#fffaf0', foil: '#f2b705', tag: 'PETITION' },
-  { bg: '#1a0c18', glow: '#ff7ab6', accent: '#f2b705', ink: '#fffaf0', foil: '#f2b705', tag: 'RSVP' },
-  { bg: '#0c0820', glow: '#8b7cff', accent: '#8b7cff', ink: '#fffaf0', foil: '#d4c4ff', tag: 'ALLOWLIST' },
-  { bg: '#041614', glow: '#00e0c0', accent: '#00e0c0', ink: '#fffaf0', foil: '#7dffd0', tag: 'ACCESS' },
+  { bg: '#140306', glow: '#ff6a3d', accent: '#ff5a36', ink: '#fffaf0', foil: '#f2b705', tag: 'PETITION', mid: '#3a0a10' },
+  { bg: '#140814', glow: '#ff7ab6', accent: '#f2b705', ink: '#fffaf0', foil: '#ffd36a', tag: 'RSVP', mid: '#3a1028' },
+  { bg: '#070614', glow: '#8b7cff', accent: '#8b7cff', ink: '#fffaf0', foil: '#d4c4ff', tag: 'ALLOWLIST', mid: '#16103a' },
+  { bg: '#031210', glow: '#00e0c0', accent: '#00e0c0', ink: '#fffaf0', foil: '#7dffd0', tag: 'ACCESS', mid: '#062822' },
 ];
 
 const STARS: [number, number, number][] = [
   [70, 50, 1.6], [150, 110, 2.2], [230, 40, 1.2], [310, 90, 1.8], [400, 30, 2], [490, 80, 1.3],
   [580, 45, 2.4], [670, 100, 1.5], [760, 35, 1.8], [850, 88, 2], [940, 50, 1.4], [1010, 120, 2.1],
   [90, 200, 1.3], [180, 260, 1.7], [880, 210, 1.5], [970, 260, 2], [40, 320, 1.2], [1040, 300, 1.6],
-  [120, 160, 1], [520, 20, 1.4], [800, 160, 1.1], [300, 200, 1], [640, 170, 1.8],
+  [120, 160, 1], [520, 20, 1.4], [800, 160, 1.1], [300, 200, 1], [640, 170, 1.8], [200, 40, 1.2],
 ];
 
-function stars(w: number, h: number, color = '#fffaf0') {
+const FONT = 'Montserrat, Liberation Sans, Helvetica, Arial, sans-serif';
+const MONO = 'DM Mono, Roboto Mono, ui-monospace, Liberation Mono, Courier New, monospace';
+
+function stars(w: number, h: number) {
   const sx = w / 1080, sy = Math.min(1, h / 1080);
-  return STARS.map(([x, y, r]) => `<circle cx="${(x * sx).toFixed(1)}" cy="${(y * sy).toFixed(1)}" r="${r}" fill="${color}" opacity="${0.45 + (r % 2) * 0.3}"/>`).join('');
+  return STARS.map(([x, y, r]) => `<circle cx="${(x * sx).toFixed(1)}" cy="${(y * sy).toFixed(1)}" r="${r}" fill="#fffaf0" opacity="${0.4 + (r % 2) * 0.35}"/>`).join('');
 }
 
-function confetti(kind: number, w: number) {
+function confetti(kind: number, w: number, h: number) {
+  if (!(kind === 1 || kind < 0)) return '';
   const cols = kind === 1 ? ['#f2b705', '#ff7ab6', '#fffaf0', '#ff5a36'] : ['#f2b705', '#ff5a36', '#0fa3a3', '#fffaf0'];
   const bits: [number, number, number, number][] = [
-    [80, 420, 14, 22], [160, 500, -18, 30], [980, 430, 25, 18], [1020, 520, -12, 28],
-    [60, 600, 8, 16], [1000, 640, 20, 20], [200, 380, -30, 14], [900, 390, 16, 16],
+    [70, 360, 14, 18], [150, 430, -18, 24], [990, 350, 25, 16], [1030, 440, -12, 22],
+    [50, 700, 8, 14], [1020, 720, 20, 16], [190, 330, -30, 12], [910, 320, 16, 14],
   ];
   return bits.map(([x, y, rot, s], i) => {
-    const c = cols[i % cols.length];
     const xx = x * (w / 1080);
-    return `<rect x="${xx}" y="${y}" width="${s}" height="${s * 0.55}" rx="2" fill="${c}" opacity=".85" transform="rotate(${rot} ${xx} ${y})"/>`;
+    const yy = h < 800 ? y * (h / 1080) : y;
+    return `<rect x="${xx}" y="${yy}" width="${s}" height="${s * 0.55}" rx="2" fill="${cols[i % cols.length]}" opacity=".85" transform="rotate(${rot} ${xx} ${yy})"/>`;
   }).join('');
 }
 
-function disc(id: string, cx: number, cy: number, r: number) {
-  return `
-  <defs>
-    <linearGradient id="dg-${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c8ffff"/><stop offset=".46" stop-color="#0fa3a3"/><stop offset=".495" stop-color="#f2b705"/><stop offset=".505" stop-color="#f2b705"/><stop offset=".55" stop-color="#c4a574"/><stop offset="1" stop-color="#5a3218"/></linearGradient>
-    <radialGradient id="halo-${id}" cx="50%" cy="50%" r="50%"><stop offset=".5" stop-color="#f2b705" stop-opacity="0"/><stop offset=".75" stop-color="#f2b705" stop-opacity=".4"/><stop offset="1" stop-color="#f2b705" stop-opacity="0"/></radialGradient>
-  </defs>
-  <circle cx="${cx}" cy="${cy}" r="${r * 1.26}" fill="url(#halo-${id})"/>
-  <ellipse cx="${cx}" cy="${cy + r * 0.12}" rx="${r * 1.02}" ry="${r * 0.16}" fill="#000" opacity=".35"/>
-  <circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#dg-${id})" stroke="#fffaf0" stroke-width="${Math.max(6, r / 28)}"/>
-  <line x1="${cx - r + 6}" y1="${cy}" x2="${cx + r - 6}" y2="${cy}" stroke="#f2b705" stroke-width="${Math.max(10, r / 18)}" stroke-linecap="round"/>
-  <circle cx="${cx}" cy="${cy}" r="${r * 1.08}" fill="none" stroke="#f2b705" stroke-width="2.5" opacity=".55"/>`;
+function grid(w: number, h: number, color: string) {
+  const step = 48;
+  const lines: string[] = [];
+  for (let x = 0; x <= w; x += step) lines.push(`<line x1="${x}" y1="0" x2="${x}" y2="${h}" stroke="${color}" stroke-width="1" opacity=".06"/>`);
+  for (let y = 0; y <= h; y += step) lines.push(`<line x1="0" y1="${y}" x2="${w}" y2="${y}" stroke="${color}" stroke-width="1" opacity=".06"/>`);
+  return `<g pointer-events="none">${lines.join('')}</g>`;
 }
 
-function foil(w: number, h: number, color: string) {
-  const m = 22, r = Math.min(w, h) * 0.055;
-  const inner = m + 14;
+function topo(cx: number, cy: number, r: number, color: string) {
+  return [1.15, 1.32, 1.5, 1.7].map((k, i) =>
+    `<ellipse cx="${cx}" cy="${cy}" rx="${r * k}" ry="${r * k * 0.78}" fill="none" stroke="${color}" stroke-width="1.2" opacity="${0.14 - i * 0.025}"/>`
+  ).join('');
+}
+
+function defs(id: string, w: number, h: number, t: Theme) {
+  return `<defs>
+    <linearGradient id="holo-${id}" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7dffd0"/><stop offset=".18" stop-color="#7ab8ff"/><stop offset=".36" stop-color="#c77dff"/>
+      <stop offset=".54" stop-color="#ff7ab6"/><stop offset=".72" stop-color="#f2b705"/><stop offset="1" stop-color="#7dffd0"/>
+    </linearGradient>
+    <linearGradient id="shine-${id}" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+      <stop offset=".42" stop-color="#fff" stop-opacity="0"/>
+      <stop offset=".5" stop-color="#fff" stop-opacity=".28"/>
+      <stop offset=".56" stop-color="#9cf0ff" stop-opacity=".1"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="hero-${id}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fffef8"/><stop offset=".4" stop-color="#ffe9a8"/><stop offset=".72" stop-color="${t.glow}"/><stop offset="1" stop-color="#fff6d0"/>
+    </linearGradient>
+    <radialGradient id="sky-${id}" cx="50%" cy="38%" r="72%">
+      <stop offset="0" stop-color="${t.glow}" stop-opacity=".55"/><stop offset=".35" stop-color="${t.mid}" stop-opacity=".7"/><stop offset="1" stop-color="${t.bg}" stop-opacity="1"/>
+    </radialGradient>
+    <radialGradient id="orb-${id}" cx="50%" cy="58%" r="42%">
+      <stop offset="0" stop-color="${t.glow}" stop-opacity=".45"/><stop offset=".55" stop-color="${t.accent}" stop-opacity=".12"/><stop offset="1" stop-color="${t.bg}" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="earth-${id}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#14325a"/><stop offset=".28" stop-color="#3ec6d4"/><stop offset=".46" stop-color="#9be7e0"/>
+      <stop offset=".495" stop-color="#ffe38a"/><stop offset=".515" stop-color="#f2b705"/><stop offset=".56" stop-color="#c4a574"/><stop offset="1" stop-color="#3a1e0c"/>
+    </linearGradient>
+    <radialGradient id="halo-${id}" cx="50%" cy="50%" r="50%">
+      <stop offset=".55" stop-color="${t.glow}" stop-opacity="0"/><stop offset=".78" stop-color="${t.glow}" stop-opacity=".55"/><stop offset="1" stop-color="${t.glow}" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow-${id}" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="grain-${id}"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" stitchTiles="stitch" result="n"/><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncA type="table" tableValues="0 0.16"/></feComponentTransfer></filter>
+    <clipPath id="clip-${id}"><circle cx="0" cy="0" r="1"/></clipPath>
+  </defs>
+  <rect width="${w}" height="${h}" fill="${t.bg}"/>
+  <rect width="${w}" height="${h}" fill="url(#sky-${id})"/>
+  ${grid(w, h, t.foil)}
+  ${stars(w, h)}
+  <rect width="${w}" height="${h}" filter="url(#grain-${id})" opacity=".45"/>
+  <rect width="${w}" height="${h}" fill="url(#shine-${id})" pointer-events="none"/>
+  <g pointer-events="none" opacity=".22">
+    <rect x="${-w * 0.15}" y="${h * 0.08}" width="${w * 0.18}" height="${h * 1.2}" fill="#fff" transform="rotate(-28 ${w / 2} ${h / 2})" opacity=".35"/>
+    <rect x="${w * 0.02}" y="${h * 0.08}" width="${w * 0.06}" height="${h * 1.2}" fill="#c8f7ff" transform="rotate(-28 ${w / 2} ${h / 2})" opacity=".5"/>
+  </g>`;
+}
+
+function foil(w: number, h: number, id: string) {
+  const m = 22, r = Math.min(w, h) * 0.05;
+  const inner = m + 16;
   const tick = (x: number, y: number, dx: number, dy: number) =>
-    `<path d="M${x} ${y + dy * 48}V${y}H${x + dx * 48}" fill="none" stroke="${color}" stroke-width="6" stroke-linecap="round"/>`;
+    `<path d="M${x} ${y + dy * 52}V${y}H${x + dx * 52}" fill="none" stroke="url(#holo-${id})" stroke-width="7" stroke-linecap="round"/>`;
   return `
-  <rect x="${m}" y="${m}" width="${w - m * 2}" height="${h - m * 2}" rx="${r}" fill="none" stroke="${color}" stroke-width="7"/>
-  <rect x="${inner}" y="${inner}" width="${w - inner * 2}" height="${h - inner * 2}" rx="${r - 8}" fill="none" stroke="#fffaf0" stroke-width="1.5" opacity=".28"/>
+  <rect x="${m}" y="${m}" width="${w - m * 2}" height="${h - m * 2}" rx="${r}" fill="none" stroke="url(#holo-${id})" stroke-width="8"/>
+  <rect x="${inner}" y="${inner}" width="${w - inner * 2}" height="${h - inner * 2}" rx="${r - 10}" fill="none" stroke="#fffaf0" stroke-width="1.25" opacity=".3"/>
   ${tick(m + 18, m + 18, 1, 1)}${tick(w - m - 18, m + 18, -1, 1)}
   ${tick(m + 18, h - m - 18, 1, -1)}${tick(w - m - 18, h - m - 18, -1, -1)}`;
+}
+
+function disc(id: string, cx: number, cy: number, r: number, image?: string) {
+  const img = image
+    ? `<g transform="translate(${cx} ${cy})">
+        <clipPath id="dclip-${id}"><circle r="${r - 8}"/></clipPath>
+        <image href="${esc(image)}" xlink:href="${esc(image)}" x="${-(r - 8)}" y="${-(r - 8)}" width="${(r - 8) * 2}" height="${(r - 8) * 2}" clip-path="url(#dclip-${id})" preserveAspectRatio="xMidYMid slice"/>
+      </g>`
+    : `<circle cx="${cx}" cy="${cy}" r="${r - 8}" fill="url(#earth-${id})"/>
+       <ellipse cx="${cx}" cy="${cy}" rx="${r - 10}" ry="${Math.max(10, r / 14)}" fill="#ffe38a" opacity=".55"/>
+       <line x1="${cx - r + 16}" y1="${cy}" x2="${cx + r - 16}" y2="${cy}" stroke="#f2b705" stroke-width="${Math.max(10, r / 18)}" stroke-linecap="round"/>
+       <circle cx="${cx + r * 0.28}" cy="${cy - r * 0.06}" r="${r * 0.07}" fill="#fff6c8" opacity=".95"/>
+       <circle cx="${cx + r * 0.28}" cy="${cy - r * 0.06}" r="${r * 0.16}" fill="#ffb347" opacity=".25"/>
+       <path d="M${cx - r * 0.62} ${cy + r * 0.22} C${cx - r * 0.2} ${cy + r * 0.1}, ${cx + r * 0.2} ${cy + r * 0.3}, ${cx + r * 0.64} ${cy + r * 0.16}" fill="none" stroke="#5a3218" stroke-width="4" opacity=".4"/>
+       <path d="M${cx - r * 0.45} ${cy + r * 0.48} C${cx} ${cy + r * 0.36}, ${cx + r * 0.3} ${cy + r * 0.55}, ${cx + r * 0.5} ${cy + r * 0.42}" fill="none" stroke="#5a3218" stroke-width="3" opacity=".3"/>`;
+  return `
+  <circle cx="${cx}" cy="${cy}" r="${r * 1.28}" fill="url(#halo-${id})"/>
+  <ellipse cx="${cx}" cy="${cy + r * 0.18}" rx="${r * 1.05}" ry="${r * 0.16}" fill="#000" opacity=".4"/>
+  ${topo(cx, cy, r, '#f2b705')}
+  <circle cx="${cx}" cy="${cy}" r="${r}" fill="#0b0a12" stroke="url(#holo-${id})" stroke-width="${Math.max(10, r / 16)}"/>
+  ${img}
+  <circle cx="${cx}" cy="${cy}" r="${r - 4}" fill="none" stroke="#fffaf0" stroke-width="2" opacity=".55"/>
+  <circle cx="${cx}" cy="${cy}" r="${r + 7}" fill="none" stroke="url(#holo-${id})" stroke-width="2" opacity=".7"/>`;
 }
 
 function flame(x: number, y: number, s = 1) {
@@ -99,116 +196,166 @@ function flame(x: number, y: number, s = 1) {
   </g>`;
 }
 
-function fireBadge(cx: number, cy: number, burned: string, wide = false) {
-  const w = wide ? 280 : 260, h = 86;
+function fireBadge(cx: number, cy: number, burned: string) {
+  const w = 250, h = 78;
   return `<g transform="translate(${cx - w / 2} ${cy - h / 2})">
-    <rect width="${w}" height="${h}" rx="43" fill="#10203a" stroke="#ff5a36" stroke-width="3"/>
-    ${flame(36, 48, 1.05)}
-    <text x="62" y="38" font-size="16" font-weight="800" fill="#ffb199" letter-spacing="2">$WIF BURNED</text>
-    <text x="62" y="68" font-size="28" font-weight="800" fill="#fffaf0">${esc(burned)}</text>
+    <rect width="${w}" height="${h}" rx="39" fill="#0b1220" stroke="url(#holo-shared)" stroke-width="2.5"/>
+    <rect x="2" y="2" width="${w - 4}" height="${h - 4}" rx="37" fill="none" stroke="#ff5a36" stroke-width="1.5" opacity=".8"/>
+    ${flame(36, 44, 1)}
+    <text x="62" y="32" font-size="13" font-weight="800" fill="#ffb199" letter-spacing="2">$WIF BURNED</text>
+    <text x="62" y="60" font-size="26" font-weight="800" fill="#fffaf0">${esc(burned)}</text>
   </g>`;
 }
 
-function numberBadge(cx: number, cy: number, r: number, kicker: string, num: string, accent: string) {
-  return `<g>
-    <circle cx="${cx}" cy="${cy}" r="${r + 8}" fill="${accent}" opacity=".35"/>
-    <circle cx="${cx}" cy="${cy}" r="${r}" fill="#10203a" stroke="${accent}" stroke-width="6"/>
-    <text x="${cx}" y="${cy - r * 0.22}" text-anchor="middle" font-size="${Math.round(r * 0.22)}" font-weight="800" fill="${accent}" letter-spacing="2">${esc(kicker)}</text>
-    <text x="${cx}" y="${cy + r * 0.38}" text-anchor="middle" font-size="${Math.round(r * (num.length > 3 ? 0.42 : 0.52))}" font-weight="800" fill="#fffaf0">${esc(num)}</text>
+function serialPlate(x: number, y: number, kicker: string, serial: string, accent: string, right = true) {
+  const w = 168, h = 70;
+  const tx = right ? x - w : x;
+  return `<g transform="translate(${tx} ${y - h / 2})">
+    <rect width="${w}" height="${h}" rx="14" fill="#0b1220" stroke="url(#holo-shared)" stroke-width="2"/>
+    <text x="${w / 2}" y="24" text-anchor="middle" font-size="11" font-weight="800" fill="${accent}" letter-spacing="3">${esc(kicker)}</text>
+    <text x="${w / 2}" y="54" text-anchor="middle" font-size="26" font-weight="800" fill="#fffaf0" font-family="${MONO}" letter-spacing="1">${esc(serial)}</text>
   </g>`;
 }
 
-function sky(id: string, w: number, h: number, t: Theme, kind = -1) {
-  return `<defs>
-    <radialGradient id="sky-${id}" cx="50%" cy="62%" r="70%"><stop offset="0" stop-color="${t.glow}" stop-opacity=".55"/><stop offset=".45" stop-color="${t.accent}" stop-opacity=".18"/><stop offset="1" stop-color="${t.bg}" stop-opacity="1"/></radialGradient>
-    <filter id="glow-${id}" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="10" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-  </defs>
-  <rect width="${w}" height="${h}" fill="${t.bg}"/>
-  <rect width="${w}" height="${h}" fill="url(#sky-${id})"/>
-  ${stars(w, h)}
-  ${kind === 1 || kind < 0 ? confetti(kind, w) : ''}`;
+function seal(cx: number, cy: number, id: string, accent: string, scale = 1) {
+  return `<g transform="translate(${cx} ${cy}) rotate(-8) scale(${scale})">
+    <circle r="78" fill="#12080c" stroke="url(#holo-${id})" stroke-width="4.5"/>
+    <circle r="72" fill="none" stroke="${accent}" stroke-width="1.15" stroke-dasharray="2.5 2.5" opacity=".85"/>
+    <path id="sealtop-${id}" d="M-50,-22 A56,56 0 0,1 50,-22" fill="none"/>
+    <path id="sealbot-${id}" d="M-50,24 A56,56 0 0,0 50,24" fill="none"/>
+    <text font-size="8" font-weight="800" fill="${accent}" letter-spacing="1.1">
+      <textPath href="#sealtop-${id}" xlink:href="#sealtop-${id}" startOffset="50%" text-anchor="middle">VERIFIED ON-CHAIN</textPath>
+    </text>
+    <text font-size="8" font-weight="800" fill="${accent}" letter-spacing="1.1">
+      <textPath href="#sealbot-${id}" xlink:href="#sealbot-${id}" startOffset="50%" text-anchor="middle">ROBINHOOD CHAIN</textPath>
+    </text>
+    <circle r="26" fill="none" stroke="${accent}" stroke-width="2"/>
+    <text text-anchor="middle" y="-1" font-size="11" font-weight="800" fill="#fffaf0" letter-spacing="1">FLAT</text>
+    <text text-anchor="middle" y="14" font-size="9" font-weight="800" fill="${accent}" letter-spacing="1">PASS</text>
+  </g>`;
+}
+
+function ribbon(cx: number, cy: number, text: string, fill: string, ink: string, width = 560) {
+  const w = width, h = 64, notch = 28;
+  const l = cx - w / 2, r = cx + w / 2, t = cy - h / 2, b = cy + h / 2;
+  const d = `M${l + notch} ${t} L${r - notch} ${t} L${r} ${cy} L${r - notch} ${b} L${l + notch} ${b} L${l} ${cy} Z`;
+  return `<g filter="url(#glow-shared)">
+    <path d="${d}" fill="${fill}" stroke="#fffaf0" stroke-width="2"/>
+    <text x="${cx}" y="${cy + 11}" text-anchor="middle" font-size="${text.length > 22 ? 22 : 28}" font-weight="800" fill="${ink}" letter-spacing="0.5">${esc(text)}</text>
+  </g>`;
 }
 
 function wordmark(cx: number, y: number, extra = '') {
-  return `<text x="${cx}" y="${y}" text-anchor="middle" font-size="20" font-weight="800" fill="#f2b705" letter-spacing="8">FLATLAND${extra ? '  ·  ' + esc(extra) : ''}</text>`;
+  return `<text x="${cx}" y="${y}" text-anchor="middle" font-size="18" font-weight="800" fill="#f2b705" letter-spacing="9">FLATLAND${extra ? '  ·  ' + esc(extra) : ''}</text>`;
 }
 
-/** Square 1080×1080 collectible poster — the in-app / downloadable card. */
-export function votedPoster(i: VotedCardInput): string {
-  return voteArt(i, false);
+function heroLine(x: number, y: number, phrase: 'VOTED' | 'SIGNED', id: string, wide: boolean, anchor: 'middle' | 'start') {
+  const size = wide ? (phrase === 'VOTED' ? 92 : 84) : (phrase === 'VOTED' ? 132 : 118);
+  return `<text x="${x}" y="${y}" text-anchor="${anchor}" font-size="${size}" font-weight="800" letter-spacing="${wide ? 4 : 2}" fill="url(#hero-${id})" stroke="#1a0a08" stroke-width="${wide ? 5 : 7}" paint-order="stroke fill" filter="url(#glow-${id})"><tspan fill="#ff5a36" stroke="#1a0a08" font-family="Georgia, Times New Roman, serif">I</tspan><tspan> ${phrase}</tspan></text>`;
 }
-/** Landscape 1200×630 OG for X link previews. */
-export function votedSvg(i: VotedCardInput): string {
-  return voteArt(i, true);
+
+function metaRow(cx: number, cy: number, wallet?: string, ts?: number) {
+  const w = wallet ? shortWallet(wallet) : '';
+  const d = ts ? formatCardDate(ts) : '';
+  if (!w && !d) return '';
+  const line = [w, d].filter(Boolean).join('   ·   ');
+  return `<g>
+    <rect x="${cx - 230}" y="${cy - 28}" width="460" height="56" rx="16" fill="#0b1220cc" stroke="#fffaf0" stroke-width="1" opacity=".9"/>
+    <text x="${cx}" y="${cy + 8}" text-anchor="middle" font-size="20" font-weight="700" fill="#e8dcc8" font-family="${MONO}" letter-spacing="0.5">${esc(line)}</text>
+  </g>`;
 }
+
+function sharedHoloDef() {
+  // fireBadge references holo-shared; also a glow-shared for the ribbon
+  return `<defs>
+    <linearGradient id="holo-shared" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7dffd0"/><stop offset=".2" stop-color="#7ab8ff"/><stop offset=".4" stop-color="#c77dff"/>
+      <stop offset=".6" stop-color="#ff7ab6"/><stop offset=".8" stop-color="#f2b705"/><stop offset="1" stop-color="#7dffd0"/>
+    </linearGradient>
+    <filter id="glow-shared" x="-10%" y="-40%" width="120%" height="180%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>`;
+}
+
+export function votedPoster(i: VotedCardInput): string { return voteArt(i, false); }
+export function votedSvg(i: VotedCardInput): string { return voteArt(i, true); }
 
 function voteArt(i: VotedCardInput, wide: boolean): string {
   const w = wide ? 1200 : 1080, h = wide ? 630 : 1080;
   const t = VOTED;
-  const titles = wrap(i.title, wide ? 28 : 26, 3);
-  const opt = i.option.length > 22 ? i.option.slice(0, 21) + '…' : i.option;
+  const id = wide ? 'vw' : 'vs';
+  const titles = wrap(i.title, wide ? 26 : 28, wide ? 2 : 3);
+  const opt = i.option.length > 24 ? i.option.slice(0, 23) + '…' : i.option;
   const pick = `${i.letter} — ${opt}`;
   const burn = burnTxt(i.burnedWif);
-  const no = i.voterNo && i.voterNo > 0 ? String(i.voterNo) : '';
-  const heroY = wide ? 200 : 240;
-  const discC = wide ? [280, 400, 200] : [540, 800, 220];
-  const badge = no ? numberBadge(wide ? 1000 : 200, wide ? 490 : 900, wide ? 86 : 112, 'VOTER', `#${no}`, t.accent) : '';
-  const hiddenNo = no ? `<text x="-999" y="-999">VOTER #${esc(no)}</text>` : '';
-  const fire = fireBadge(wide ? 1000 : 880, wide ? 200 : 1000, burn);
-  const titleY = wide ? 270 : 310;
-  const pickY = wide ? 400 : 450;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" font-family="Liberation Sans, Helvetica, Arial, sans-serif">
-  ${sky('v' + (wide ? 'w' : 's'), w, h, t, -1)}
-  ${disc(wide ? 'vw' : 'vs', discC[0], discC[1], discC[2])}
-  ${foil(w, h, t.foil)}
-  ${wordmark(wide ? 860 : 540, wide ? 70 : 80)}
-  <text x="${wide ? 640 : 540}" y="${heroY}" text-anchor="${wide ? 'start' : 'middle'}" font-size="${wide ? 92 : 128}" font-weight="800" letter-spacing="${wide ? 4 : 2}" filter="url(#glow-v${wide ? 'w' : 's'})"><tspan fill="${t.accent}">I </tspan><tspan fill="${t.ink}">VOTED</tspan></text>
-  ${titles.map((l, k) => `<text x="${wide ? 640 : 540}" y="${titleY + k * (wide ? 36 : 44)}" text-anchor="${wide ? 'start' : 'middle'}" font-size="${wide ? 26 : 32}" font-weight="700" fill="#e8dcc8">${esc(l)}</text>`).join('')}
-  <g>
-    <rect x="${wide ? 640 : 540 - 200}" y="${pickY}" width="${wide ? 280 : 400}" height="56" rx="28" fill="#10203acc" stroke="${t.accent}" stroke-width="2"/>
-    <text x="${wide ? 780 : 540}" y="${pickY + 38}" text-anchor="middle" font-size="26" font-weight="800" fill="${t.ink}">${esc(pick)}</text>
-  </g>
-  ${badge}${hiddenNo}${fire}
-  <text x="${wide ? 640 : 540}" y="${h - 36}" text-anchor="${wide ? 'start' : 'middle'}" font-size="16" font-weight="700" fill="#b5bfd3">the world is flat. so is every vote.</text>
+  const no = i.voterNo && i.voterNo > 0 ? i.voterNo : 0;
+  const serial = no ? padSerial(no) : '';
+  const discC = wide ? [250, 335, 175] : [540, 590, 205];
+  const hiddenNo = no ? `<text x="-999" y="-999">VOTER #${esc(String(no))}</text>` : '';
+  const ax = wide ? 500 : 540;
+  const anchor: 'middle' | 'start' = wide ? 'start' : 'middle';
+  const heroY = wide ? 175 : 200;
+  const titleY = wide ? 220 : 250;
+  const pickY = wide ? 530 : 825;
+  const midX = wide ? 250 : 540;
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" font-family="${FONT}">
+  ${sharedHoloDef()}
+  ${defs(id, w, h, t)}
+  ${confetti(-1, w, h)}
+  <rect width="${w}" height="${h}" fill="url(#orb-${id})" pointer-events="none"/>
+  ${disc(id, discC[0], discC[1], discC[2], i.image)}
+  ${foil(w, h, id)}
+  ${wordmark(wide ? 720 : 540, wide ? 62 : 78)}
+  ${serial ? serialPlate(w - 50, wide ? 88 : 88, 'VOTER', serial, t.accent) : ''}
+  ${heroLine(ax, heroY, 'VOTED', id, wide, anchor)}
+  ${titles.map((l, k) => `<text x="${ax}" y="${titleY + k * (wide ? 32 : 38)}" text-anchor="${anchor}" font-size="${wide ? 22 : 28}" font-weight="700" fill="#e8dcc8">${esc(l)}</text>`).join('')}
+  ${ribbon(midX, pickY, pick, t.accent, '#fffaf0', wide ? 400 : 560)}
+  ${seal(wide ? 520 : 178, wide ? 560 : 968, id, t.foil, wide ? 0.72 : 0.92)}
+  ${metaRow(wide ? 820 : 540, wide ? 430 : 970, i.wallet, i.ts)}
+  ${fireBadge(wide ? 1040 : 900, wide ? 560 : 970, burn)}
+  ${hiddenNo}
 </svg>`;
 }
 
-export function signedPoster(i: SignedCardInput): string {
-  return signArt(i, false);
-}
-export function signedSvg(i: SignedCardInput): string {
-  return signArt(i, true);
-}
+export function signedPoster(i: SignedCardInput): string { return signArt(i, false); }
+export function signedSvg(i: SignedCardInput): string { return signArt(i, true); }
 
 function signArt(i: SignedCardInput, wide: boolean): string {
   const w = wide ? 1200 : 1080, h = wide ? 630 : 1080;
   const t = SIGN_THEMES[i.kind] ?? SIGN_THEMES[0];
   const kind = signedKindLabel(i.kind);
   const headline = i.headline ?? signedHeadline(i.kind, i.title);
-  const headLines = wrap(headline, wide ? 28 : 24, 3);
-  const titleLines = i.kind === 0 ? [] : wrap(i.title, wide ? 28 : 22, 2);
+  const headLines = wrap(headline, wide ? 26 : 26, 3);
+  const titleLines = i.kind === 0 ? [] : wrap(i.title, wide ? 28 : 24, 2);
   const burn = burnTxt(i.burnedWif);
-  const pos = i.position && i.position > 0 ? String(i.position) : '';
+  const pos = i.position && i.position > 0 ? i.position : 0;
+  const serial = pos ? padSerial(pos) : '';
   const id = `s${i.kind}${wide ? 'w' : 'q'}`;
-  const heroY = wide ? 210 : 250;
-  const discC = wide ? [280, 400, 200] : [540, 810, 210];
-  const badge = pos ? numberBadge(wide ? 1000 : 200, wide ? 490 : 910, wide ? 86 : 112, i.kind === 1 ? 'SEAT' : 'NO.', `#${pos}`, t.accent) : '';
-  const hiddenPos = pos ? `<text x="-999" y="-999">#${esc(pos)}</text>` : '';
-  const fire = fireBadge(wide ? 1000 : 880, wide ? 200 : 1000, burn);
-  const ax = wide ? 640 : 540;
-  const anchor = wide ? 'start' : 'middle';
-  const subY = wide ? 280 : 320;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" font-family="Liberation Sans, Helvetica, Arial, sans-serif">
-  ${sky(id, w, h, t, i.kind)}
+  const discC = wide ? [250, 335, 170] : [540, 600, 195];
+  const hiddenPos = pos ? `<text x="-999" y="-999">#${esc(String(pos))}</text>` : '';
+  const ax = wide ? 500 : 540;
+  const anchor: 'middle' | 'start' = wide ? 'start' : 'middle';
+  const heroY = wide ? 180 : 210;
+  const subY = wide ? 225 : 260;
+  const kicker = i.kind === 1 ? 'SEAT' : 'NO.';
+  const tagW = Math.max(160, kind.length * 12 + 36);
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" font-family="${FONT}">
+  ${sharedHoloDef()}
+  ${defs(id, w, h, t)}
+  ${confetti(i.kind, w, h)}
+  <rect width="${w}" height="${h}" fill="url(#orb-${id})" pointer-events="none"/>
   ${disc(id, discC[0], discC[1], discC[2])}
-  ${foil(w, h, t.foil)}
-  ${wordmark(wide ? 860 : 540, wide ? 70 : 80, 'SIGN')}
-  <rect x="${wide ? 640 : 450}" y="${wide ? 96 : 118}" width="180" height="36" rx="18" fill="${t.accent}"/>
-  <text x="${wide ? 730 : 540}" y="${wide ? 121 : 143}" text-anchor="middle" font-size="16" font-weight="800" fill="#10203a" letter-spacing="3">${esc(kind.toUpperCase())}</text>
-  <text x="${ax}" y="${heroY}" text-anchor="${anchor}" font-size="${wide ? 80 : 112}" font-weight="800" letter-spacing="${wide ? 2 : 0}" filter="url(#glow-${id})"><tspan fill="${t.accent}">I </tspan><tspan fill="${t.ink}">SIGNED</tspan></text>
-  ${headLines.map((l, k) => `<text x="${ax}" y="${subY + k * (wide ? 34 : 42)}" text-anchor="${anchor}" font-size="${wide ? 24 : 30}" font-weight="800" fill="#e8dcc8">${esc(l)}</text>`).join('')}
-  ${titleLines.map((l, k) => `<text x="${ax}" y="${subY + headLines.length * (wide ? 34 : 42) + 10 + k * 30}" text-anchor="${anchor}" font-size="22" font-weight="700" fill="#b5bfd3">${esc(l)}</text>`).join('')}
-  ${badge}${hiddenPos}${fire}
-  <text x="${ax}" y="${h - 36}" text-anchor="${anchor}" font-size="16" font-weight="700" fill="#b5bfd3">one wallet, one act, on-chain.</text>
+  ${foil(w, h, id)}
+  ${wordmark(wide ? 720 : 540, wide ? 62 : 72, 'SIGN')}
+  ${serial ? serialPlate(w - 50, wide ? 88 : 88, kicker, serial, t.accent) : ''}
+  <rect x="${wide ? 500 : 540 - tagW / 2}" y="${wide ? 88 : 100}" width="${tagW}" height="30" rx="15" fill="${t.accent}"/>
+  <text x="${wide ? 500 + tagW / 2 : 540}" y="${wide ? 109 : 121}" text-anchor="middle" font-size="13" font-weight="800" fill="#10203a" letter-spacing="3">${esc(kind.toUpperCase())}</text>
+  ${heroLine(ax, heroY, 'SIGNED', id, wide, anchor)}
+  ${headLines.map((l, k) => `<text x="${ax}" y="${subY + k * (wide ? 30 : 36)}" text-anchor="${anchor}" font-size="${wide ? 20 : 26}" font-weight="800" fill="#e8dcc8">${esc(l)}</text>`).join('')}
+  ${wide ? titleLines.map((l, k) => `<text x="${ax}" y="${subY + headLines.length * 30 + 8 + k * 26}" text-anchor="${anchor}" font-size="18" font-weight="700" fill="#b5bfd3">${esc(l)}</text>`).join('') : ''}
+  ${!wide ? ribbon(540, 830, (i.title.length > 28 ? i.title.slice(0, 27) + '…' : i.title), t.accent, i.kind === 0 ? '#fffaf0' : '#10203a', 600) : ''}
+  ${seal(wide ? 520 : 178, wide ? 560 : 968, id, t.foil, wide ? 0.72 : 0.92)}
+  ${metaRow(wide ? 820 : 540, wide ? 430 : 970, i.wallet, i.ts)}
+  ${fireBadge(wide ? 1040 : 900, wide ? 560 : 970, burn)}
+  ${hiddenPos}
 </svg>`;
 }

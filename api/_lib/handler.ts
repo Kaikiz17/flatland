@@ -237,12 +237,39 @@ export async function handle(req: Request, env: Env = {}): Promise<Response> {
       const f = flatScore(s, addr);
       return { f, svg: cardSvg({ kicker: 'Flat Score', title: shortA(addr), big: String(f.score), bigLabel: f.rank ? `rank #${f.rank} of ${f.of}` : 'not ranked yet', lines: [`Tier: ${f.tierName}  ·  ${f.streak}-week streak`, `${f.votes + f.acts} votes & acts  ·  ${f.created} elections created`, `${Number(BigInt(f.burned) / 10n ** 16n) / 100} $WIF burned`], foot: 'Flat Score: public, on-chain, recomputable · open to everyone' }) };
     };
+    const cardMeta = (sp: URLSearchParams) => {
+      const rawW = sp.get('w') ?? sp.get('wallet') ?? '';
+      const wallet = /^0x[0-9a-fA-F]{40}$/.test(rawW) ? rawW : undefined;
+      const rawT = sp.get('t') ?? sp.get('date') ?? sp.get('d') ?? '';
+      let ts: number | undefined;
+      if (/^\d{10,13}$/.test(rawT)) { ts = Number(rawT); if (ts > 1e12) ts = Math.floor(ts / 1000); }
+      return { wallet, ts };
+    };
+    const embedImg = async (hash: string): Promise<string | undefined> => {
+      if (!env.kv) return;
+      try {
+        const b: ArrayBuffer | null = await env.kv.get(`img:${hash}`, { type: 'arrayBuffer', cacheTtl: 3600 });
+        if (!b) return;
+        const u = new Uint8Array(b);
+        const mime = u[0] === 0xff ? 'image/jpeg' : 'image/webp';
+        let s = '';
+        for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000));
+        return `data:${mime};base64,${btoa(s)}`;
+      } catch { return; }
+    };
     const votedCard = async (id: number, opt: number, voterNo?: number) => {
       const e = s.elections.find((x) => x.id === id);
       if (!e || opt < 0 || opt >= e.options.length) return null;
-      const p = publicElection(s, e, appUrl, await loadMedia(env.kv, e.metaURI));
+      const media = await loadMedia(env.kv, e.metaURI);
+      const p = publicElection(s, e, appUrl, media);
       const burn = Number(BigInt(e.voteCost) / 10n ** 16n) / 100;
-      const input = { title: e.title, letter: p.options[opt].letter, option: p.options[opt].name, burnedWif: burn, votes: p.options.reduce((a, o) => a + o.votes, 0), voterNo };
+      const q = cardMeta(url.searchParams);
+      const votes = [...e.chainVotes, ...e.depositVotes];
+      const ev = (q.wallet ? votes.find((v) => v.voter.toLowerCase() === q.wallet!.toLowerCase()) : undefined)
+        ?? (voterNo && voterNo > 0 && voterNo <= votes.length ? votes[voterNo - 1] : undefined);
+      const hash = media?.images?.[String(opt)] ?? media?.images?.[opt];
+      const image = (hash ? await embedImg(hash) : undefined) ?? (hash ? `${appUrl}/img/${hash}` : undefined);
+      const input = { title: e.title, letter: p.options[opt].letter, option: p.options[opt].name, burnedWif: burn, votes: p.options.reduce((a, o) => a + o.votes, 0), voterNo, wallet: q.wallet ?? ev?.voter, ts: q.ts ?? ev?.ts, image };
       return { e, p, svg: votedSvg(input), poster: votedPoster(input) };
     };
     const signedCard = (id: number, position?: number) => {
@@ -251,7 +278,10 @@ export async function handle(req: Request, env: Env = {}): Promise<Response> {
       const burn = Number(BigInt(g.cost) / 10n ** 16n) / 100;
       const headline = signedHeadline(g.kind, g.title);
       const pos = position && position > 0 ? position : (g.count || undefined);
-      const input = { kind: g.kind, title: g.title, burnedWif: burn, position: pos, headline };
+      const q = cardMeta(url.searchParams);
+      const actor = (q.wallet ? g.actors.find((a) => a.who.toLowerCase() === q.wallet!.toLowerCase()) : undefined)
+        ?? (pos ? g.actors.find((a) => a.position + 1 === pos) : undefined);
+      const input = { kind: g.kind, title: g.title, burnedWif: burn, position: pos, headline, wallet: q.wallet ?? actor?.who, ts: q.ts ?? actor?.ts };
       return { g, headline, svg: signedSvg(input), poster: signedPoster(input) };
     };
     let sm = /\/api\/score\/(0x[0-9a-fA-F]{40})$/.exec(path);
@@ -277,9 +307,9 @@ export async function handle(req: Request, env: Env = {}): Promise<Response> {
     sm = /\/share\/score\/(0x[0-9a-fA-F]{40})$/.exec(path);
     if (sm) { const { f } = scoreCard(sm[1]); return page(`Flat Score ${f.score} — ${shortA(sm[1])}`, `${f.tierName} tier · ${f.votes + f.acts} votes & acts · ${f.streak}-week streak${f.rank ? ` · rank #${f.rank} of ${f.of}` : ''}. What is yours?`, `${appUrl}/api/og/score/${sm[1]}.svg`, `${appUrl}/share/score/${sm[1]}`, `${appUrl}/#/score/${sm[1]}`); }
     sm = /\/share\/voted\/(\d+)\/(\d+)(?:\/(\d+))?$/.exec(path);
-    if (sm) { const c = await votedCard(Number(sm[1]), Number(sm[2]), sm[3] ? Number(sm[3]) : undefined); if (!c) return new Response('Not found', { status: 404 }); const o = c.p.options[Number(sm[2])]; const ogPath = `/api/og/voted/${sm[1]}/${sm[2]}${sm[3] ? '/' + sm[3] : ''}.svg`; const sharePath = `/share/voted/${sm[1]}/${sm[2]}${sm[3] ? '/' + sm[3] : ''}`; return page(`I voted ${o.name} — ${c.e.title}`, `I burned $WIF to vote ${o.letter} — ${o.name}. 1 wallet = 1 vote. Cast yours.`, `${appUrl}${ogPath}`, `${appUrl}${sharePath}`, `${appUrl}/#/e/${sm[1]}?vote=${sm[2]}`); }
+    if (sm) { const c = await votedCard(Number(sm[1]), Number(sm[2]), sm[3] ? Number(sm[3]) : undefined); if (!c) return new Response('Not found', { status: 404 }); const o = c.p.options[Number(sm[2])]; const q = url.search; const ogPath = `/api/og/voted/${sm[1]}/${sm[2]}${sm[3] ? '/' + sm[3] : ''}.svg${q}`; const sharePath = `/share/voted/${sm[1]}/${sm[2]}${sm[3] ? '/' + sm[3] : ''}${q}`; return page(`I voted ${o.name} — ${c.e.title}`, `I burned $WIF to vote ${o.letter} — ${o.name}. 1 wallet = 1 vote. Cast yours.`, `${appUrl}${ogPath}`, `${appUrl}${sharePath}`, `${appUrl}/#/e/${sm[1]}?vote=${sm[2]}`); }
     sm = /\/share\/signed\/(\d+)(?:\/(\d+))?$/.exec(path);
-    if (sm) { const c = signedCard(Number(sm[1]), sm[2] ? Number(sm[2]) : undefined); if (!c) return new Response('Not found', { status: 404 }); const og = `/api/og/signed/${sm[1]}${sm[2] ? '/' + sm[2] : ''}.svg`; const share = `/share/signed/${sm[1]}${sm[2] ? '/' + sm[2] : ''}`; return page(`${c.headline} — Flatland Sign`, `${c.headline}. Each act burns $WIF, is capped at one per wallet, and builds the actor's on-chain streak.`, `${appUrl}${og}`, `${appUrl}${share}`, `${appUrl}/#/rails/${sm[1]}`); }
+    if (sm) { const c = signedCard(Number(sm[1]), sm[2] ? Number(sm[2]) : undefined); if (!c) return new Response('Not found', { status: 404 }); const q = url.search; const og = `/api/og/signed/${sm[1]}${sm[2] ? '/' + sm[2] : ''}.svg${q}`; const share = `/share/signed/${sm[1]}${sm[2] ? '/' + sm[2] : ''}${q}`; return page(`${c.headline} — Flatland Sign`, `${c.headline}. Each act burns $WIF, is capped at one per wallet, and builds the actor's on-chain streak.`, `${appUrl}${og}`, `${appUrl}${share}`, `${appUrl}/#/rails/${sm[1]}`); }
 
     m = /\/(?:api\/)?share\/(\d+)$/.exec(path) ?? /\/v\/(\d+)\/(\d+)$/.exec(path);
     if (m) {

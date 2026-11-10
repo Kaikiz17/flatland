@@ -63,6 +63,9 @@ describe('Flat Score + I voted cards', () => {
     const h = await (await get('/share/voted/1/1')).text();
     expect(h).toContain('I voted SPY'); expect(h).toContain('#/e/1?vote=1');
     expect(h).toContain('og:image:width" content="1200"');
+    const withMeta = await (await get('/api/card/voted/1/1/172.svg?w=0xAa300000000000000000000000000000000049c1&t=1794322800')).text();
+    expect(withMeta).toContain('0xAa30…49c1');
+    expect(withMeta).toContain('10 NOV 2026');
     expect((await get('/share/voted/1/9')).status).toBe(404);
   });
   it('signed card + share page; unknown gate 404', async () => {

@@ -3,6 +3,7 @@ import type { ElectionView } from '@flatland/core';
 import { Copy, letter } from './ui';
 import { useApp } from '../lib/store';
 import { useWallet } from '../lib/wallet';
+import { cardQuery } from '../lib/format';
 import { appBase } from './ShareComposer';
 import { downloadPng } from '../lib/download';
 
@@ -16,6 +17,13 @@ export function voterNumber(e: ElectionView, addr?: string | null): number | und
   return undefined;
 }
 
+function voteTs(e: ElectionView, addr?: string | null): number | undefined {
+  if (!addr) return undefined;
+  const lc = addr.toLowerCase();
+  const v = e.chainVotes.find((x) => x.voter.toLowerCase() === lc) ?? e.depositVotes.find((x) => x.voter.toLowerCase() === lc);
+  return v?.ts;
+}
+
 /** Collectible 1:1 "I voted" poster + Share on X (landscape OG) + Download PNG. */
 export function VotedCard({ e, opt }: { e: ElectionView; opt: number }) {
   const { cfg } = useApp();
@@ -23,9 +31,11 @@ export function VotedCard({ e, opt }: { e: ElectionView; opt: number }) {
   const [busy, setBusy] = useState(false);
   const base = appBase(cfg?.appUrl);
   const no = voterNumber(e, w.address);
+  const ts = voteTs(e, w.address) ?? Math.floor(Date.now() / 1000);
+  const qs = cardQuery(w.address, w.address ? ts : undefined);
   const tail = `${e.id}/${opt}${no ? `/${no}` : ''}`;
-  const url = `${base}/share/voted/${tail}`;
-  const poster = `/api/card/voted/${tail}.svg`;
+  const url = `${base}/share/voted/${tail}${qs}`;
+  const poster = `/api/card/voted/${tail}.svg${qs}`;
   const text = `I voted ${letter(opt)} — ${e.options[opt]} on “${e.title.slice(0, 90)}”${no ? ` · voter #${no}` : ''} 🔥 My vote burned $WIF. 1 wallet = 1 vote. Cast yours:`;
   return (
     <div className="poster-wrap" data-testid="voted-card">

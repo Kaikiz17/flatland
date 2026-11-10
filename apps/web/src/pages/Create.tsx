@@ -43,7 +43,7 @@ function CreateForm({ tpl }: { tpl?: (typeof TEMPLATES)[keyof typeof TEMPLATES] 
   const [trust, setTrust] = useState<'default' | 'none' | 'custom'>('default');
   const [custom, setCustom] = useState('');
   const [cw, setCw] = useState(12);
-  const [meta, setMeta] = useState('');
+  const [meta, setMeta] = useState(tpl && 'details' in tpl && tpl.details ? tpl.details : '');
   const [executor, setExecutor] = useState('');
   const [showPrizes, setShowPrizes] = useState(query.get('prizes') === '1');
 
@@ -65,8 +65,8 @@ function CreateForm({ tpl }: { tpl?: (typeof TEMPLATES)[keyof typeof TEMPLATES] 
 
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
-      <h2>{tpl ? 'Start the GOAT rematch' : 'Start an election'}</h2>
-      {tpl ? <div className="banner small"><b>Template: {tpl.title}.</b> 32 candidates from World is Fair’s public GOAT results, 7 days, 1 $WIF per vote. Edit anything, add pictures, then create. A prize pool for a random voter draw is optional (prize fields below).</div> : null}
+      <h2>{tpl?.heading ?? 'Start an election'}</h2>
+      {tpl ? <div className="banner small"><b>Template: {tpl.title}.</b> {tpl.blurb}</div> : null}
       <p className="muted">Permissionless. 1 wallet = 1 vote, every vote burns $WIF. Share the link and watch the live room fill up.</p>
       <div className="card">
         <div className="field"><label>Question</label><input value={title} maxLength={140} onChange={(e) => setTitle(e.target.value)} placeholder="Which Stock Token should the world buy first?" /></div>
