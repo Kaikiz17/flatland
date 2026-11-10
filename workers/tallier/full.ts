@@ -7,12 +7,12 @@
  *   • transactions are sent WITHOUT waiting for receipts, max 2 per pass, de-duplicated via KV (TTL 120 s)
  *   • attestation is held back while funding-source lookups are incomplete (never guess)
  */
-import { fallback, http, type Transport } from 'viem';
+import { custom, fallback, http, type Transport } from 'viem';
 import { robinhood, type Deployment, type LogCache } from '@flatland/core';
 import { FlatlandService } from '../../packages/indexer/src/service.ts';
 import { blockscoutProvider } from '../../packages/indexer/src/funding.ts';
 import deploymentJson from '../../deployments/robinhood-mainnet.json';
-import { budget, MAX_SUBREQUESTS, rpcList, getLastGood, setLastGood, type Env } from './shared.ts';
+import { budget, MAX_SUBREQUESTS, rpcList, logsRpcList, getLastGood, setLastGood, type Env } from './shared.ts';
 
 const dep = deploymentJson as unknown as Deployment;
 const MAX_WRITES = 2;
@@ -23,20 +23,31 @@ const ZERO = '0x0000000000000000000000000000000000000000';
 /** per-pass RPC diagnostics (host, HTTP status, first bytes of a JSON-RPC error), surfaced in /api/status */
 const diag: string[] = [];
 const host = (u: string) => u.replace(/^https?:\/\//, '').split('/')[0];
-function edgeTransport(urls: string[]): Transport {
+const redact = (t: string) => t.replace(/(\/v2\/|[?&]api[_-]?key=|\/)[A-Za-z0-9_-]{20,}/gi, '$1<redacted>');
+let logsLast = 0;
+function fallbackOf(urls: string[], last: () => number, setLast: (i: number) => void): Transport {
   const n = urls.length;
   return fallback(
-    Array.from({ length: n }, (_, k) => (getLastGood() + k) % n).map((i) =>
+    Array.from({ length: n }, (_, k) => (last() + k) % n).map((i) =>
       http(urls[i], {
         batch: { batchSize: 20, wait: 8 }, retryCount: 0, timeout: 10_000,
         onFetchResponse: (r) => {
-          if (r.ok) setLastGood(i);
-          r.clone().text().then((t) => { if (!r.ok || /"error"/.test(t.slice(0, 300))) diag.push(`${host(urls[i])} ${r.status} ${t.slice(0, 110).replace(/\s+/g, ' ')}`); }).catch(() => {});
+          if (r.ok) setLast(i);
+          r.clone().text().then((t) => { if (!r.ok || /"error"/.test(t.slice(0, 300))) diag.push(redact(`${host(urls[i])} ${r.status} ${t.slice(0, 110).replace(/\s+/g, ' ')}`)); }).catch(() => {});
         },
       }),
     ),
     { retryCount: 0, rank: false },
   );
+}
+/** eth_getLogs goes to `logsUrls` (public endpoints with wide ranges); everything else (calls, blocks, gas, sends, receipts) to `urls` (keyed RPC first). */
+function edgeTransport(urls: string[], logsUrls: string[]): Transport {
+  const main = fallbackOf(urls, getLastGood, setLastGood);
+  const logsT = fallbackOf(logsUrls, () => logsLast, (i) => { logsLast = i; });
+  return (opts: any) => {
+    const m = main(opts), l = logsT(opts);
+    return custom({ request: (a: any) => (a.method === 'eth_getLogs' ? l : m).request(a) })(opts);
+  };
 }
 const chainFor = (rpc: string) => ({ ...robinhood, rpcUrls: { default: { http: [rpc] } } });
 
@@ -82,7 +93,7 @@ export async function fullPass(env: Env, st: any, cheap: { sig: string; election
   const logs: string[] = [];
   const svc = new EdgeService(
     {
-      chain: chainFor(urls[0]), rpc: urls[0], transport: edgeTransport(urls), logCache: kvLogCache(env.KV), logRange: 1_000n,
+      chain: chainFor(urls[0]), rpc: urls[0], transport: edgeTransport(urls, logsRpcList(env)), logCache: kvLogCache(env.KV), logRange: 1_000n,
       deployment: dep, funding, dataDir: '/tmp/none',
       publicDataUrl: `${(env.APP_URL ?? '').replace(/\/$/, '')}/data`,
       tallierKey: env.TALLIER_KEY as `0x${string}` | undefined,
@@ -95,7 +106,7 @@ export async function fullPass(env: Env, st: any, cheap: { sig: string; election
   const before = svc.fundingCache.size;
 
   let err: string | null = null;
-  try { await svc.tick(); } catch (e) { err = ((e as any).shortMessage ?? (e as Error).message).split('\n')[0] + ((e as any).details ? ' | ' + String((e as any).details).slice(0, 120) : ''); console.log('tick failed: ' + err); }
+  try { await svc.tick(); } catch (e) { err = redact(((e as any).shortMessage ?? (e as Error).message).split('\n')[0] + ((e as any).details ? ' | ' + String((e as any).details).slice(0, 120) : '')); console.log('tick failed: ' + err); }
   let snap = svc.latest;
   // the basket section degrades silently to null when an RPC call fails; never park such a snapshot
   if (snap && !snap.basket) { err = err ?? 'basket read incomplete (RPC flaky), retrying'; snap = undefined; }

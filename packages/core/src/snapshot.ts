@@ -147,8 +147,24 @@ const REORG_MARGIN = 64n;
 async function getLogsCached(client: PublicClient, cache: LogCache | undefined, key: string, p: Parameters<typeof getLogsChunked>[1]) {
   if (!cache) return getLogsChunked(client, p);
   const hit = await cache.get(key);
-  const have: Log[] = hit && BigInt(hit.to) >= p.from - 1n ? hit.logs : [];
-  let cursor = hit && BigInt(hit.to) >= p.from - 1n ? BigInt(hit.to) : p.from - 1n;
+  return scanFrom(client, cache, [key], [hit], p).then((r) => r[0]);
+}
+
+/** Several contracts at once: when their cached cursors agree, one multi-address eth_getLogs per chunk serves all of them. */
+async function getLogsMany(client: PublicClient, cache: LogCache | undefined, addrs: Address[], mk: (a: Address) => string, p: { from: bigint; to: bigint; maxRange: bigint }): Promise<Log[][]> {
+  const single = () => Promise.all(addrs.map((a) => getLogsCached(client, cache, mk(a), { ...p, address: a })));
+  if (!cache) return single();
+  const hits = await Promise.all(addrs.map((a) => cache.get(mk(a))));
+  const tos = new Set(hits.map((h) => (h ? h.to : 'none')));
+  if (tos.size !== 1 || hits[0] === null || BigInt(hits[0].to) < p.from - 1n) return single();
+  const merged = await scanFrom(client, cache, addrs.map(mk), hits, { ...p, address: addrs }, addrs);
+  return merged;
+}
+
+async function scanFrom(client: PublicClient, cache: LogCache, keys: string[], hits: ({ to: string; logs: Log[] } | null)[], p: Parameters<typeof getLogsChunked>[1], split?: Address[]): Promise<Log[][]> {
+  const hit = hits[0];
+  const valid = !!hit && BigInt(hit.to) >= p.from - 1n;
+  let cursor = valid ? BigInt(hit!.to) : p.from - 1n;
   const start = cursor;
   const fresh: Log[] = [];
   let failure: unknown;
@@ -168,12 +184,18 @@ async function getLogsCached(client: PublicClient, cache: LogCache | undefined, 
   }
   // persist everything up to `cursor - margin` (the tip may still reorg); logs in the margin are re-fetched next time
   const safe = cursor - REORG_MARGIN > start ? cursor - REORG_MARGIN : start;
-  const all = [...have, ...fresh];
-  // KV writes are scarce on the free plan: persist only when there are new logs, a first scan, or the cursor moved a lot
-  if (safe > start && (fresh.length || !hit || safe - start > 2_000n)) await cache.put(key, { to: safe.toString(), logs: all.filter((l) => (l.blockNumber ?? 0n) <= safe) });
+  const lows = split?.map((a) => a.toLowerCase());
+  const out: Log[][] = [];
+  for (let k = 0; k < keys.length; k++) {
+    const mine = (l: Log) => !lows || (l.address ?? '').toLowerCase() === lows[k];
+    const all = [...(valid && hits[k] ? hits[k]!.logs : []), ...fresh.filter(mine)];
+    // KV writes are scarce on the free plan: persist only when there are new logs, a first scan, or the cursor moved a lot
+    if (safe > start && (fresh.length || !valid || safe - start > 2_000n)) await cache.put(keys[k], { to: safe.toString(), logs: all.filter((l) => (l.blockNumber ?? 0n) <= safe) });
+    out.push(all);
+  }
   if (failure) throw failure;
-  const seen = new Set<string>();
-  return all.filter((l) => { const k = `${l.blockHash}:${l.logIndex}`; if (seen.has(k)) return false; seen.add(k); return true; }) as Log[];
+  const dedupe = (all: Log[]) => { const seen = new Set<string>(); return all.filter((l) => { const x = `${l.blockHash}:${l.logIndex}`; if (seen.has(x)) return false; seen.add(x); return true; }) as Log[]; };
+  return out.map(dedupe);
 }
 
 const blockTsCache = new Map<bigint, number>();
@@ -199,8 +221,7 @@ export async function readSnapshot(client: PublicClient, dep: Deployment, opts: 
   const now = Number((await client.getBlock({ blockNumber: head })).timestamp);
   const hub = { address: dep.flatland, abi: flatlandAbi } as const;
 
-  const scan = (addr: Address) => getLogsCached(client, opts.logCache, `all:${addr}`, { address: addr, from, to: head, maxRange });
-  const [hubRaw, gateRaw, standRaw, vaultRaw] = await Promise.all([scan(dep.flatland), scan(dep.gate), scan(dep.standing), scan(dep.basket)]);
+  const [hubRaw, gateRaw, standRaw, vaultRaw] = await getLogsMany(client, opts.logCache, [dep.flatland, dep.gate, dep.standing, dep.basket] as Address[], (a) => `all:${a}`, { from, to: head, maxRange });
   const hubLogs = parseEventLogs({ abi: flatlandAbi, logs: hubRaw as any });
   const gateLogs = parseEventLogs({ abi: wifGateAbi, logs: gateRaw as any });
   const standLogs = parseEventLogs({ abi: standingAbi, logs: standRaw as any });

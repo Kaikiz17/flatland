@@ -2,7 +2,8 @@
 export interface Env {
   KV: KVNamespace;
   TALLIER_KEY?: string;
-  RPC_URL?: string; // optional keyed endpoint(s), comma separated, tried first
+  RPC_URL?: string; // optional keyed endpoint(s), comma separated, tried first for everything except eth_getLogs
+  LOGS_RPC_URL?: string; // optional endpoint(s) tried first for eth_getLogs only (keyed free tiers often cap log ranges)
   BLOCKSCOUT_URL?: string;
   APP_URL?: string;
 }
@@ -17,10 +18,11 @@ export const PUBLIC_RPCS = [
   'https://robinhood-rpc.publicnode.com',
   'https://rpc.mainnet.chain.robinhood.com',
 ];
-export function rpcList(env: Env): string[] {
-  const extra = (env.RPC_URL ?? '').split(',').map((x) => x.trim()).filter(Boolean).filter((x) => !PUBLIC_RPCS.includes(x));
-  return [...extra, ...PUBLIC_RPCS];
-}
+const split = (v?: string) => (v ?? '').split(',').map((x) => x.trim()).filter(Boolean).filter((x) => !PUBLIC_RPCS.includes(x));
+/** endpoints for reads, gas, sends, receipts (keyed RPC first) */
+export function rpcList(env: Env): string[] { return [...split(env.RPC_URL), ...PUBLIC_RPCS]; }
+/** endpoints for eth_getLogs: public list (wide ranges allowed) unless LOGS_RPC_URL is set */
+export function logsRpcList(env: Env): string[] { return [...split(env.LOGS_RPC_URL), ...PUBLIC_RPCS]; }
 let lastGood = 0; // index into rpcList() that answered last (warm isolates reuse it)
 export const getLastGood = () => lastGood;
 export const setLastGood = (i: number) => { lastGood = i; };

@@ -58,3 +58,12 @@ Findings from the live deploy (Nov 2026):
 - **For production reliability set a keyed RPC** (e.g. an Alchemy/Infura-style URL for chain 4663) as the `RPC_URL` secret on `flatland-tallier` (comma-separated list allowed); it is tried first.
 
 Free-plan CPU caveat: the idle tick (raw JSON-RPC counter read + KV) is tiny; a full pass (viem + snapshot) can exceed the 10 ms CPU budget occasionally. It runs only when counters change, a deadline is reached, or every 30 min (5 min while any election is not final). Cron changes can take up to ~15 min to propagate.
+
+### Keyed RPC (Alchemy) routing
+- `RPC_URL` (Worker secret on `flatland-tallier`, never in the repo): keyed endpoint(s) used first for `eth_call`, blocks, gas, `sendRawTransaction` and receipts, with the public list as fallback.
+- `eth_getLogs` is routed separately: Alchemy's free tier caps it at 10 blocks, so logs use the public list (1000-block chunks, one multi-address request per chunk, KV cursor). Set `LOGS_RPC_URL` (secret/var) to put a log-capable endpoint first.
+- Error/diagnostic strings are redacted (only hostnames are logged), because keyed URLs carry the key in the path.
+- The `flatland` web worker needs no RPC secret: it only serves the KV snapshot (its direct-RPC fallback uses public endpoints).
+```
+set secret:  PUT /accounts/<id>/workers/scripts/flatland-tallier/secrets  {name:"RPC_URL", type:"secret_text", text:"https://…"}
+```

@@ -40,3 +40,7 @@ Last updated: 2026-11-10 (Lagos, 13:20).
 - Thin idle path + lazy full pass; KV log cursor; 1000-block concurrent log chunks (thirdweb cap). Full pass verified: error null, tallierActive true, 11 subrequests.
 - 0 elections on mainnet yet, so no on-chain tallier action has been exercised end-to-end.
 - TODO: keyed RPC as `RPC_URL` secret for reliability; watch CPU on full passes.
+
+## Keyed RPC (Alchemy) – done
+- `RPC_URL` secret on `flatland-tallier` (Alchemy, reads/gas/sends/receipts first). `eth_getLogs` stays on public endpoints (Alchemy free = 10-block cap), via one multi-address request per 1000-block chunk. Optional `LOGS_RPC_URL`.
+- Verified: forced full passes with `error null`, 8 subrequests, no 429s in rpcDiag; idle CPU p50 ≈ 2 ms (was ≈ 48 ms), full-pass p99 ≈ 80 ms.

@@ -24,6 +24,8 @@ const FULL_EVERY_QUIET_MS = 30 * 60_000; // everything final: refresh the parked
 const FULL_EVERY_OPEN_MS = 5 * 60_000; // an election is running: keep the API snapshot (deposit-path votes) this fresh
 const BEAT_EVERY_MS = 10 * 60_000;
 
+const hostOf = (u: string) => u.replace(/^https?:\/\//, '').split('/')[0]; // never log full URLs: keyed endpoints carry the key in the path
+
 async function rawSignature(urls: string[]): Promise<{ sig: string; electionCount: number }> {
   const body = JSON.stringify(COUNTERS.map(([to, data], id) => ({ jsonrpc: '2.0', id, method: 'eth_call', params: [{ to, data }, 'latest'] })));
   let lastErr = 'no rpc';
@@ -31,13 +33,13 @@ async function rawSignature(urls: string[]): Promise<{ sig: string; electionCoun
     const i = (getLastGood() + k) % urls.length;
     try {
       const r = await fetch(urls[i], { method: 'POST', headers: { 'content-type': 'application/json' }, body, signal: AbortSignal.timeout(10_000) });
-      if (!r.ok) { lastErr = `${urls[i]} HTTP ${r.status}`; continue; }
+      if (!r.ok) { lastErr = `${hostOf(urls[i])} HTTP ${r.status}`; continue; }
       const j = (await r.json()) as { id: number; result?: string; error?: unknown }[];
-      if (!Array.isArray(j) || j.length !== COUNTERS.length || j.some((x) => typeof x.result !== 'string')) { lastErr = `${urls[i]} bad reply`; continue; }
+      if (!Array.isArray(j) || j.length !== COUNTERS.length || j.some((x) => typeof x.result !== 'string')) { lastErr = `${hostOf(urls[i])} bad reply`; continue; }
       j.sort((a, b) => a.id - b.id);
       setLastGood(i);
       return { sig: j.map((x) => BigInt(x.result!).toString()).join(':'), electionCount: Number(BigInt(j[0].result!)) };
-    } catch (e) { lastErr = `${urls[i]} ${(e as Error).message.slice(0, 60)}`; }
+    } catch (e) { lastErr = `${hostOf(urls[i])} ${(e as Error).message.slice(0, 60).replace(/https?:\/\/\S+/g, '<url>')}`; }
   }
   throw new Error('all RPC endpoints failed: ' + lastErr);
 }
