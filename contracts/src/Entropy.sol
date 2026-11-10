@@ -35,6 +35,9 @@ contract LocalEntropy is IEntropy {
 
     function hashOf(uint256 n) external view returns (bytes32) {
         if (n >= block.number || block.number - n > 256) return bytes32(0);
-        return blockhash(n);
+        bytes32 h = blockhash(n);
+        // anvil forking an Arbitrum chain reports an L1-estimate block.number whose blockhash() is empty;
+        // fall back to a deterministic devnet value so local end-to-end runs work. NEVER deployed to mainnet.
+        return h == bytes32(0) ? keccak256(abi.encode("flatland-local-entropy", n, block.chainid)) : h;
     }
 }

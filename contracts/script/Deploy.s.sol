@@ -63,10 +63,16 @@ contract Deploy is Script {
         d.standing.setWriters(writers);
     }
 
+    /// @dev On Arbitrum Orbit chains block.number is an L1 estimate; the indexer needs the L2 block for getLogs.
+    function _l2Block() internal view returns (uint256 n) {
+        (bool ok, bytes memory ret) = address(0x64).staticcall(abi.encodeWithSignature("arbBlockNumber()"));
+        n = (ok && ret.length == 32) ? abi.decode(ret, (uint256)) : block.number;
+    }
+
     function _write() internal {
         string memory k = "d";
         vm.serializeUint(k, "chainId", block.chainid);
-        vm.serializeUint(k, "deployBlock", block.number);
+        vm.serializeUint(k, "deployBlock", _l2Block());
         vm.serializeAddress(k, "wif", Config.WIF);
         vm.serializeAddress(k, "usdg", Config.USDG);
         vm.serializeAddress(k, "tallier", tallier);

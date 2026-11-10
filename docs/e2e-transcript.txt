@@ -1,0 +1,92 @@
+▶ forking Robinhood Chain (latest)
+▶ forked at L2 block 110719997; deploying contracts (local fork only)
+  deployments written to ../deployments/local.json
+  Flatland 0xE65B75e7A8de220bcfec86F58c4c25A62aB7CD9b
+  Basket 0xe7213b68DC25bf30bC7f1DE9BAead075c66979F9
+▶ running scenario
+
+[01] Fund actors with ETH (local fork only) and WIF (real token, transferred from a whale)
+
+[02] Creator launches an election: "Which Stock Token should the world buy first?"  (3 options, prize pool 30 WIF, 3 draw slots)
+   ✓ deposit address for option 0 matches CREATE2 prediction: 0xB423CdF289Ddc11A63746B5f0411c2285726531a
+   ✓ deposit address for option 1 matches CREATE2 prediction: 0x1854C5952779693C7639479cA4417Ca5CcaE23dB
+   ✓ deposit address for option 2 matches CREATE2 prediction: 0xce1f35D77Dd259f85DFbe7960Af62EBD8cB6A2f2
+
+[03] Voters. Honest voters funded by different wallets; a sybil farm funded by ONE wallet (f1) votes on-chain AND via deposit boxes
+   ✓ boxes hold the transferred WIF (counterfactual addresses, no code yet)
+
+[04] Fairness check BEFORE the election ends (live indexer pass: clustering by funding source)
+   · indexer: election 1: tallier duties status=1 now=1794296784 end=1794383153
+   · indexer: election 1: collapsed 0x5bf38dd79d794c6f795cb0ba053224c7bf197af1 into 0x203F50cDDDfE56744704DC53637CA1D8BA4444C4
+   · indexer: election 1: swept+burned 2000000000000000000 wei WIF from option 1 box
+   · indexer: election 1: swept+burned 7000000000000000000 wei WIF from option 2 box
+   ✓ indexer sees 3 connect-wallet votes and 3 deposit-path votes
+   ✓ sybil cluster detected: 3 wallets collapse into earlier votes
+   fairness: {"score":78,"grade":"C","parts":{"spread":94,"independence":50,"sources":100,"openness":70},"notes":["3 wallet(s) collapsed into existing votes"]}
+
+[05] Election ends → tallier collapses sybils on-chain, attests deposit votes (Merkle root + published groups), keeper burns deposit boxes
+   · indexer: election 1: tallier duties status=1 now=1794383191 end=1794383153
+   · indexer: election 1: attested 1 deposit voters, root 0x3c318ad96dd8199291792bad27adb83b1b9a8c5a86cc4a779397d43eace2c102
+   ✓ deposit result attested on-chain
+   ✓ deposit boxes swept: WIF burned
+   tallies (NVDA,SPY,TSLA): 1,1,1
+   ✓ 1 wallet = 1 vote: sybil wallets were collapsed (≤4 counted of 6 voters)
+   ✓ the f1 sybil farm counts as ONE vote
+
+[06] Challenge-by-burn: anyone can formally accuse a wallet by burning WIF
+   ✓ challenge burned 10 WIF
+   · indexer: election 1: tallier duties status=1 now=1794383195 end=1794383153
+   · indexer: election 1: challenge 0 rejected
+   ✓ tallier resolved the challenge (rejected: wallet is independent)
+
+[07] Challenge window passes → finalize → future-block draw → prize claims with Merkle proofs
+   · indexer: election 1: tallier duties status=1 now=1794408395 end=1794383153
+   · indexer: election 1: finalized
+   ✓ finalized; winner = option 0
+   · indexer: election 1: tallier duties status=2 now=1794408396 end=1794383153
+   · indexer: election 1: draw seeded
+   ✓ draw seeded from a future block hash
+   ✓ all 3 prize slots claimed through proofs (3 entries incl. deposit-path voters)
+
+[08] Reputation: deposit-path voters get streak credit permissionlessly (keeper claimStanding)
+   · indexer: election 1: tallier duties status=2 now=1794408396 end=1794383153
+   ✓ standing credited for counted deposit voters
+
+[09] "Send 1 WIF to act" rail: petition gate + widget contract hook
+   ✓ hasActed(gate, wallet) = true
+   ✓ gate act burned 1 WIF
+
+[10] People's Basket: open epoch → vote → finalize → rebalance with real Uniswap swaps → buyback+burn
+   ✓ found real USDG liquidity to borrow on the fork (261295 USDG)
+   · indexer: election 2: tallier duties status=1 now=1794840433 end=1794840401
+   · indexer: election 1: tallier duties status=2 now=1794840433 end=1794383153
+   · indexer: election 2: tallier duties status=1 now=1794887234 end=1794840401
+   · indexer: election 2: finalized
+   · indexer: election 1: tallier duties status=2 now=1794887234 end=1794383153
+   target weights (bps): 1500,3000,4000,1500,0,0,0,0,0,0,0
+   ✓ people-chosen weights sum to 100%
+   holds SPY: 3.914576660076225
+   holds QQQ: 8.70507141447046
+   holds NVDA: 43.48694284051407
+   holds AAPL: 8.417663295128953
+   ✓ basket now holds 4 real Stock Tokens bought on Uniswap, weighted by 1-wallet-1-vote
+   ✓ vault fees bought and BURNED 43,098 WIF on Uniswap v4
+
+[11] Done. Final snapshot totals
+   · indexer: election 2: tallier duties status=2 now=1794894445 end=1794840401
+   · indexer: election 1: tallier duties status=2 now=1794894445 end=1794383153
+{
+  "wifBurned": "43128486658079881679035",
+  "electionBurned": "29000000000000000000",
+  "gateBurned": "1000000000000000000",
+  "buybackBurned": "43098486658079881679035",
+  "votes": 10,
+  "elections": 2,
+  "gates": 1,
+  "participants": 11,
+  "acts": 1
+}
+
+WIF supply moved 43128 WIF since the election started (all burned).
+
+✅ E2E PASSED
