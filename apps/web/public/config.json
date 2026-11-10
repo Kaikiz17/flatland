@@ -5,5 +5,7 @@
   "deploymentUrl": "./deployment.mainnet.json",
   "explorer": "https://robinhoodchain.blockscout.com",
   "dexUrl": "https://worldisflat.fun",
-  "pollMs": 6000
+  "pollMs": 6000,
+  "auditUrl": ".",
+  "appUrl": "https://flatland.flatland.workers.dev"
 }

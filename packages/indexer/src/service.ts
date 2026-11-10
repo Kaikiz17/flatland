@@ -18,6 +18,10 @@ export interface ServiceConfig {
   tallierKey?: `0x${string}`;
   keeper?: boolean; // finalize/sweep/seed/claimStanding with the same key
   log?: (m: string) => void;
+  /** Stateless/edge mode (Cloudflare cron): no disk, no waiting for receipts, bounded work per tick. */
+  edge?: boolean;
+  /** Edge mode: return false to hold back attestations/collapses (e.g. funding lookups still incomplete). */
+  canAttest?: () => boolean;
 }
 
 export type IndexedSnapshot = Snapshot & { analysis: Record<number, Analysis>; tallier: { address: Address | null; active: boolean } };
@@ -33,27 +37,29 @@ export class FlatlandService {
   log: (m: string) => void;
 
   constructor(public cfg: ServiceConfig) {
-    this.client = createPublicClient({ chain: cfg.chain, transport: http(cfg.rpc) }) as PublicClient;
+    this.client = createPublicClient({ chain: cfg.chain, transport: http(cfg.rpc, cfg.edge ? { batch: true } : undefined) }) as PublicClient;
     this.log = cfg.log ?? ((m) => console.log(new Date().toISOString(), m));
     if (cfg.tallierKey) {
       this.account = privateKeyToAccount(cfg.tallierKey);
       this.wallet = createWalletClient({ account: this.account, chain: cfg.chain, transport: http(cfg.rpc) });
     }
     const cachePath = join(cfg.dataDir, 'funding-cache.json');
-    if (existsSync(cachePath)) {
+    if (!cfg.edge && existsSync(cachePath)) {
       try { for (const [k, v] of Object.entries(JSON.parse(readFileSync(cachePath, 'utf8')))) this.fundingCache.set(k, v); } catch {}
     }
     this.funding = cached(cfg.funding, this.fundingCache);
   }
 
   private persistCache() {
+    if (this.cfg.edge) return;
     mkdirSync(this.cfg.dataDir, { recursive: true });
     writeFileSync(join(this.cfg.dataDir, 'funding-cache.json'), JSON.stringify(Object.fromEntries(this.fundingCache)));
   }
 
-  private async write(args: any) {
+  protected async write(args: any) {
     if (!this.wallet) throw new Error('no tallier key configured (read-only mode)');
     const hash = await this.wallet.writeContract({ ...args, chain: this.cfg.chain, account: this.account! });
+    if (this.cfg.edge) return hash; // the next tick re-derives everything from chain state
     const rc = await this.client.waitForTransactionReceipt({ hash });
     if (rc.status !== 'success') throw new Error('tx reverted ' + hash);
     return hash;
@@ -89,12 +95,14 @@ export class FlatlandService {
   }
 
   private publish(e: ElectionView, plan: ElectionPlan) {
+    if (this.cfg.edge) return;
     const dir = join(this.cfg.dataDir, 'groups');
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, `${e.id}.json`), JSON.stringify(plan.audit, null, 2));
   }
 
   private publishSnapshot() {
+    if (this.cfg.edge) return;
     mkdirSync(this.cfg.dataDir, { recursive: true });
     writeFileSync(join(this.cfg.dataDir, 'snapshot.json'), JSON.stringify(this.latest));
   }
@@ -105,6 +113,7 @@ export class FlatlandService {
     const nowChain = Number((await this.client.getBlock()).timestamp);
     void now;
     if (e.statusRaw !== 1) return;
+    if (this.cfg.canAttest && !this.cfg.canAttest()) return; // incomplete funding data: wait, never guess
     const uri = `${this.cfg.publicDataUrl.replace(/\/$/, '')}/groups/${e.id}.json`;
 
     // 1. collapse connect-wallet sybils (any time before finalize)

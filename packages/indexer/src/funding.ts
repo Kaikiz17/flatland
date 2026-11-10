@@ -15,13 +15,13 @@ export function cached(inner: FundingProvider, cache: Map<string, FundingInfo>):
 }
 
 /** Production: Blockscout REST v2 (earliest inbound transaction with value, falling back to earliest token transfer in). */
-export function blockscoutProvider(base = 'https://robinhoodchain.blockscout.com', maxPages = 6): FundingProvider {
+export function blockscoutProvider(base = 'https://robinhoodchain.blockscout.com', maxPages = 6, fetchFn: typeof fetch = fetch): FundingProvider {
   return async (wallet) => {
     try {
       let params = '';
       let earliest: { from: string; hash: string } | null = null;
       for (let page = 0; page < maxPages; page++) {
-        const r = await fetch(`${base}/api/v2/addresses/${wallet}/transactions?filter=to${params}`, { headers: { accept: 'application/json', 'user-agent': 'flatland-indexer/1.0' } });
+        const r = await fetchFn(`${base}/api/v2/addresses/${wallet}/transactions?filter=to${params}`, { headers: { accept: 'application/json', 'user-agent': 'flatland-indexer/1.0' } });
         if (!r.ok) return { source: null };
         const j: any = await r.json();
         for (const t of j.items ?? []) if (t.from?.hash && t.value !== '0' && t.from.hash.toLowerCase() !== wallet.toLowerCase()) earliest = { from: t.from.hash, hash: t.hash };

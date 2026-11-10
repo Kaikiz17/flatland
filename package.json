@@ -11,7 +11,8 @@
     "test:fork": "bash scripts/test-fork.sh",
     "test:ts": "npm run -ws --if-present test",
     "build:web": "npm -w apps/web run build",
-    "e2e": "bash scripts/e2e-local.sh"
+    "e2e": "bash scripts/e2e-local.sh",
+    "build:workers": "npm run build:web && node workers/build-assets.mjs && node workers/build.mjs"
   },
   "engines": { "node": ">=20" }
 }

@@ -247,7 +247,7 @@ function PrizePanel({ e }: { e: ElectionView }) {
           const o = e.chainVotes.find((v) => v.voter.toLowerCase() === voter.toLowerCase());
           out.push({ slot, index, voter, option: o?.option ?? 0, proof: [], claimed });
         } else {
-          if (!audit && cfg?.indexerUrl) audit = await fetch(`${cfg.indexerUrl.replace(/\/$/, '')}/api/elections/${e.id}/audit`).then((r) => r.json()).catch(() => null);
+          if (!audit && (cfg?.auditUrl ?? cfg?.indexerUrl)) audit = await fetch(`${(cfg?.auditUrl ?? cfg?.indexerUrl)!.replace(/\/$/, '')}/api/elections/${e.id}/audit`).then((r) => r.json()).catch(() => null);
           const ent = audit?.depositEntries?.find((x: any) => x.index === index);
           out.push({ slot, index, voter: (ent?.voter ?? ZERO) as Address, option: ent?.option ?? 0, proof: ent?.proof ?? [], claimed });
         }

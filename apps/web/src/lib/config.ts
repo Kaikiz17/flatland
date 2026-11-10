@@ -6,6 +6,8 @@ export interface AppConfig {
   chainName: string;
   rpc: string;
   indexerUrl: string;
+  /** where /api/elections/:id/audit lives when there is no full indexer (e.g. the edge worker); defaults to indexerUrl */
+  auditUrl?: string;
   deploymentUrl: string;
   explorer: string;
   bundlerUrl?: string;

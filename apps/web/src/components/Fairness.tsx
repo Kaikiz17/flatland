@@ -7,7 +7,8 @@ const LABELS: Record<string, string> = { spread: 'Vote spread', independence: 'I
 export function FairnessCard({ e, a }: { e: ElectionView; a: Analysis }) {
   const { cfg } = useApp();
   const f = a.fairness;
-  const audit = cfg?.indexerUrl ? `${cfg.indexerUrl.replace(/\/$/, '')}/api/elections/${e.id}/audit` : null;
+  const auditBase = cfg?.auditUrl ?? cfg?.indexerUrl;
+  const audit = auditBase ? `${auditBase.replace(/\/$/, '')}/api/elections/${e.id}/audit` : null;
   return (
     <div className="card">
       <div className="row between"><h3>Fairness score</h3><span className={`tag ${f.grade}`}>grade {f.grade}</span></div>

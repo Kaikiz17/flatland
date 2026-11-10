@@ -22,6 +22,12 @@ export interface Env {
   APP_URL?: string; // public URL of the static site, for absolute links in cards/MCP
   DEPLOYMENT_URL?: string; // defaults to `${APP_URL}/deployment.json`
   FONT_FILES?: string; // comma list for the PNG rasteriser (Node only)
+  /** Edge workers: a pre-computed snapshot (e.g. from KV, written by the cron tallier). Return null to fall back to RPC. */
+  getSnapshot?: () => Promise<any | null>;
+  /** Edge workers: bundled deployment record, so the RPC fallback needs no extra fetch. */
+  deployment?: Deployment;
+  /** Edge workers cannot rasterise PNG within the free CPU budget: point twitter:image at the static /og-default.png (og:image stays the live SVG card). */
+  staticTwitterImage?: boolean;
 }
 
 type Full = Snapshot & { analysis?: Record<number, Analysis> };
@@ -32,19 +38,21 @@ export async function loadSnapshot(env: Env, origin: string): Promise<Full> {
   const key = env.INDEXER_URL ?? env.RPC_URL ?? 'direct';
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL) return hit.v;
-  let v: Full;
-  if (env.INDEXER_URL) {
+  let v: Full | undefined;
+  const pre = env.getSnapshot ? await env.getSnapshot() : null;
+  if (pre) v = pre;
+  else if (env.INDEXER_URL) {
     const r = await fetch(env.INDEXER_URL.replace(/\/$/, '') + '/snapshot.json');
     if (!r.ok) throw new Error('indexer ' + r.status);
     v = await r.json();
   } else {
     const depUrl = env.DEPLOYMENT_URL ?? `${(env.APP_URL ?? origin).replace(/\/$/, '')}/deployment.json`;
-    const dep = (await (await fetch(depUrl)).json()) as Deployment;
-    const client = createPublicClient({ chain: robinhood, transport: http(env.RPC_URL ?? robinhood.rpcUrls.default.http[0]) }) as PublicClient;
+    const dep = env.deployment ?? ((await (await fetch(depUrl)).json()) as Deployment);
+    const client = createPublicClient({ chain: robinhood, transport: http(env.RPC_URL ?? robinhood.rpcUrls.default.http[0], { batch: true }) }) as PublicClient;
     v = await readSnapshot(client, dep);
   }
-  cache.set(key, { at: Date.now(), v });
-  return v;
+  cache.set(key, { at: Date.now(), v: v! });
+  return v!;
 }
 
 const json = (body: unknown, status = 200, extra: Record<string, string> = {}) =>
@@ -202,7 +210,7 @@ export async function handle(req: Request, env: Env = {}): Promise<Response> {
       const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(e.title)} — Flatland</title>
 <meta property="og:type" content="website"><meta property="og:title" content="${esc(e.title)}"><meta property="og:description" content="${esc(desc)}">
 <meta property="og:image" content="${p.ogImage}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:url" content="${p.share}">
-<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(e.title)}"><meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${p.ogImage}">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(e.title)}"><meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${env.staticTwitterImage ? appUrl + '/og-default.png' : p.ogImage}">
 <meta http-equiv="refresh" content="0; url=${dest}"></head><body><a href="${dest}">Open the election →</a><script>location.replace(${JSON.stringify(dest)})</script></body></html>`;
       return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=30' } });
     }

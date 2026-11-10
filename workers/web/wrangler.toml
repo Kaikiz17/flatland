@@ -1,0 +1,23 @@
+# Flatland web + API as ONE Worker (free plan). Static app is embedded (run `npm run build:workers` first).
+# Deploy with wrangler:  cd workers/web && npx wrangler deploy      (needs `wrangler login`)
+# The live deployment was pushed through the Cloudflare API connector instead (workers/make-payload.mjs), same settings.
+name = "flatland"
+main = "index.ts"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[observability]
+enabled = true
+
+[vars]
+RPC_URL = "https://rpc.mainnet.chain.robinhood.com"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "e6591923eec1421e99674804fd5e5be0"   # namespace "flatland" (cache only: snapshot, audits, status; no secrets)
+
+[[rules]]
+type = "Text"
+globs = ["**/*.txt"]
+fallthrough = true

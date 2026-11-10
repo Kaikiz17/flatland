@@ -145,6 +145,12 @@ async function tsOf(client: PublicClient, block: bigint) {
   return t;
 }
 
+/** Fetch many block timestamps concurrently (a batching transport turns this into one HTTP request). */
+async function prefetchTs(client: PublicClient, blocks: Iterable<bigint>) {
+  const need = [...new Set(blocks)].filter((b) => !blockTsCache.has(b));
+  for (let i = 0; i < need.length; i += 100) await Promise.all(need.slice(i, i + 100).map((b) => tsOf(client, b)));
+}
+
 export async function readSnapshot(client: PublicClient, dep: Deployment, opts: ReadOptions = {}): Promise<Snapshot> {
   const head = await client.getBlockNumber();
   const from = opts.fromBlock ?? BigInt(dep.deployBlock);
@@ -205,6 +211,7 @@ export async function readSnapshot(client: PublicClient, dep: Deployment, opts: 
 
   // chain votes (+ timestamps)
   const voteLogs = hubLogs.filter((l) => l.eventName === 'Voted');
+  await prefetchTs(client, voteLogs.map((l) => l.blockNumber!));
   for (const l of voteLogs) {
     const a = l.args as any;
     const e = byId.get(Number(a.id));
@@ -235,6 +242,7 @@ export async function readSnapshot(client: PublicClient, dep: Deployment, opts: 
         abi: erc20Abi,
         logs: (await getLogsChunked(client, { address: dep.wif, from, to: head, maxRange, event: erc20Abi[6], args: { to: part } })) as any,
       });
+      await prefetchTs(client, logs.map((l) => l.blockNumber!));
       const seen = new Set<string>();
       for (const l of logs) {
         const a = l.args as any;
@@ -259,6 +267,7 @@ export async function readSnapshot(client: PublicClient, dep: Deployment, opts: 
 
   // ── gates ──
   const gates = new Map<number, GateView>();
+  await prefetchTs(client, gateLogs.filter((l) => l.eventName === 'Acted').map((l) => l.blockNumber!));
   for (const l of gateLogs) {
     const a = l.args as any;
     if (l.eventName === 'GateCreated') {
@@ -300,21 +309,35 @@ export async function readSnapshot(client: PublicClient, dep: Deployment, opts: 
     });
   }
 
-  // ── basket ──
+  // ── basket ──  (batched: a handful of multicalls instead of ~35 sequential eth_calls)
   let basket: BasketView | null = null;
   try {
     const bv = { address: dep.basket, abi: basketVaultAbi } as const;
-    const n = Number(await client.readContract({ ...bv, functionName: 'assetCount' }));
+    const one = (functionName: string, args?: any[]) => ({ ...bv, functionName, ...(args ? { args } : {}) });
+    const r = (await client.multicall({
+      contracts: [
+        one('assetCount'), one('epochCount'), one('targets'), one('pendingFees'), one('totalFeesBurned'), one('totalSupply'),
+        one('promoteThreshold'), one('walletCap'), one('tvlCap'), one('governance'), one('totalAssets'),
+        { address: dep.buyback, abi: wifBuybackAbi, functionName: 'totalWifBurned' },
+      ] as any[],
+      allowFailure: true,
+    })) as { status: string; result?: any; error?: Error }[];
+    const need = (i: number) => { if (r[i].status !== 'success') throw (r[i].error ?? new Error('basket call failed')); return r[i].result; };
+    const n = Number(need(0));
+    const epochCount = Number(need(1));
+    const targets = need(2) as number[];
+    const nav: string | null = r[10].status === 'success' ? (r[10].result as bigint).toString() : null;
+    const per = n
+      ? ((await client.multicall({
+          contracts: Array.from({ length: n }, (_, i) => [one('assetAt', [BigInt(i)]), one('backers', [BigInt(epochCount), BigInt(i)])]).flat() as any[],
+          allowFailure: false,
+        })) as any[])
+      : [];
     const assets: BasketView['assets'] = [];
-    const epochCount = Number(await client.readContract({ ...bv, functionName: 'epochCount' }));
-    const targets = (await client.readContract({ ...bv, functionName: 'targets' })) as number[];
     for (let i = 0; i < n; i++) {
-      const a = (await client.readContract({ ...bv, functionName: 'assetAt', args: [BigInt(i)] })) as any;
-      const backers = Number(await client.readContract({ ...bv, functionName: 'backers', args: [BigInt(epochCount), BigInt(i)] }));
-      assets.push({ idx: i, token: a.token, symbol: a.symbol, listed: a.listed, targetBps: Number(targets[i] ?? 0), backers });
+      const a = per[i * 2] as any;
+      assets.push({ idx: i, token: a.token, symbol: a.symbol, listed: a.listed, targetBps: Number(targets[i] ?? 0), backers: Number(per[i * 2 + 1]) });
     }
-    let nav: string | null = null;
-    try { nav = (await client.readContract({ ...bv, functionName: 'totalAssets' })).toString(); } catch { nav = null; }
     const epochs: BasketView['epochs'] = [];
     for (const l of vaultLogs) {
       if (l.eventName !== 'EpochOpened') continue;
@@ -323,28 +346,38 @@ export async function readSnapshot(client: PublicClient, dep: Deployment, opts: 
     }
     basket = {
       address: dep.basket, epochs, assets,
-      pendingFees: (await client.readContract({ ...bv, functionName: 'pendingFees' })).toString(),
-      totalFeesBurned: (await client.readContract({ ...bv, functionName: 'totalFeesBurned' })).toString(),
-      totalSupply: (await client.readContract({ ...bv, functionName: 'totalSupply' })).toString(),
+      pendingFees: need(3).toString(),
+      totalFeesBurned: need(4).toString(),
+      totalSupply: need(5).toString(),
       navUsdg: nav,
-      buybackWifBurned: (await client.readContract({ address: dep.buyback, abi: wifBuybackAbi, functionName: 'totalWifBurned' })).toString(),
+      buybackWifBurned: need(11).toString(),
       round: epochCount,
-      promoteThreshold: Number(await client.readContract({ ...bv, functionName: 'promoteThreshold' })),
-      walletCap: (await client.readContract({ ...bv, functionName: 'walletCap' })).toString(),
-      tvlCap: (await client.readContract({ ...bv, functionName: 'tvlCap' })).toString(),
-      governance: (await client.readContract({ ...bv, functionName: 'governance' })) as Address,
+      promoteThreshold: Number(need(6)),
+      walletCap: need(7).toString(),
+      tvlCap: need(8).toString(),
+      governance: need(9) as Address,
     };
   } catch (e) {
     opts.log?.('basket read failed: ' + (e as Error).message);
   }
 
-  const electionBurned = (await client.readContract({ ...hub, functionName: 'totalBurned' })) as bigint;
-  const gateBurned = (await client.readContract({ address: dep.gate, abi: wifGateAbi, functionName: 'totalBurned' })) as bigint;
+  const tot = (await client.multicall({
+    contracts: [
+      { ...hub, functionName: 'totalBurned' },
+      { address: dep.gate, abi: wifGateAbi, functionName: 'totalBurned' },
+      { ...hub, functionName: 'totalVotes' },
+      { address: dep.standing, abi: standingAbi, functionName: 'uniqueParticipants' },
+      { address: dep.gate, abi: wifGateAbi, functionName: 'totalActs' },
+    ] as any[],
+    allowFailure: false,
+  })) as any[];
+  const electionBurned = tot[0] as bigint;
+  const gateBurned = tot[1] as bigint;
   const buybackBurned = basket ? BigInt(basket.buybackWifBurned) : 0n;
   const nominations = vaultLogs.filter((l) => l.eventName === 'Nominated').length;
-  const totalVotes = Number(await client.readContract({ ...hub, functionName: 'totalVotes' }));
-  const participants = Number(await client.readContract({ address: dep.standing, abi: standingAbi, functionName: 'uniqueParticipants' }));
-  const totalActs = Number(await client.readContract({ address: dep.gate, abi: wifGateAbi, functionName: 'totalActs' }));
+  const totalVotes = Number(tot[2]);
+  const participants = Number(tot[3]);
+  const totalActs = Number(tot[4]);
 
   return {
     version: 1,

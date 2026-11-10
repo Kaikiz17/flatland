@@ -11,3 +11,6 @@ recon/*.html
 apps/web/public/deployment.json
 apps/web/dist
 .demo/
+workers/dist/
+workers/web/assets/
+workers/web/assets.gen.ts

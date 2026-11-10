@@ -6,7 +6,7 @@ Built on the World is Fair rules (1 wallet = 1 vote, every vote burns real $WIF,
 
 Target network: Robinhood Chain (Arbitrum Orbit L2, chain id 4663, ETH gas). $WIF is `0x5173b8eA6923c2d40267890D45C46a3480954773`.
 
-> **Status: deploy-ready, unaudited, not deployed.** Everything below was run on a local anvil fork of the real chain with no funds. See "Go-live checklist".
+> **Status: live on Robinhood Chain mainnet (chain 4663), unaudited.** App + API: **https://flatland.flatland.workers.dev** (Cloudflare Workers, free plan). Vote robot: Cloudflare Cron Worker `flatland-tallier`. Contracts: `deployments/robinhood-mainnet.json`. Hosting details: [`workers/README.md`](workers/README.md).
 
 ## Three pillars
 
@@ -101,6 +101,7 @@ node scripts/ui-e2e.mjs       # Playwright + injected wallet against the demo (n
    `TALLIER_KEY` is the funded key for the tallier address. `KEEPER=1` also sweeps deposits, finalizes and seeds draws. Anyone can run a keeper.
 3. Web, either static host:
    - **Vercel**: import the repo. `vercel.json` sets the build to `npm run build:web`, output `apps/web/dist`, and rewrites `/share/:id`. Env: `INDEXER_URL`, `RPC_URL`, `APP_URL`, `DEPLOYMENT_URL`.
+   - **Cloudflare Workers (what the live site uses)**: `npm run build:workers`, see [`workers/README.md`](workers/README.md). Web + API in one Worker, the tallier as a Cron Trigger Worker, all on the free plan.
    - **Cloudflare Pages**: build command `npm run build:web`, output `apps/web/dist`. `functions/` provides `/api/*` and `/share/*` (PNG OG falls back to SVG on the edge).
    - **Pure static** (GitHub Pages / IPFS): upload `apps/web/dist`. The `api/` routes will not exist, so OG cards and MCP are unavailable.
    Edit `config.json` (`indexerUrl`, `rpc`, `appUrl`, `bundlerUrl`).
@@ -115,7 +116,7 @@ Deployed by `0x2898121645aA02ff7151a5E42E71f7C8554ce64C` (also `governance` for 
 - **Shared-funder false positives.** Honest voters funded by one wallet can be collapsed. Mitigations: popular-source exemption, published groups, challenge-by-burn.
 - **Trust in the tallier** for deposit-box votes (bounded by the challenge window; onchain votes always count).
 - **Randomness** is sequencer-influenced (see above).
-- **Serverless wrappers** (Vercel, Cloudflare) are unit-tested through the shared handler but have not been run on those platforms. The Cloudflare PNG path is untested.
+- **Serverless wrappers.** The Cloudflare Workers deployment is live (see `workers/README.md`). The Vercel and Pages wrappers are unit-tested through the shared handler but have not been run on those platforms. On the free Workers plan the OG card is SVG (PNG does not fit the 10 ms CPU budget); X shares use a static PNG.
 - **Gasless panel** needs a bundler URL that supports EntryPoint v0.7. The contracts path is proven on a fork with a local bundler step. No hosted bundler was used.
 - **Stock Tokens** may be restricted in some jurisdictions, and the basket depends on thin DEX liquidity. Rebalances have slippage and oracle bounds, and revert if the oracle is stale (by design).
 - The bots never post anywhere. Reply handlers and link generators only.
