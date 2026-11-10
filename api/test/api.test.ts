@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { decodeFunctionData } from 'viem';
 import { handle } from '../_lib/handler.ts';
-import { ogSvg, wrap, votedSvg, signedSvg, signedHeadline } from '../_lib/og.ts';
+import { ogSvg, wrap, votedSvg, votedPoster, signedSvg, signedPoster, signedHeadline } from '../_lib/og.ts';
 import { flatlandAbi } from '../../packages/core/src/abis.ts';
 
 const A = (n: number) => ('0x' + n.toString(16).padStart(40, '0')) as `0x${string}`;
@@ -54,18 +54,23 @@ describe('Flat Score + I voted cards', () => {
   });
   it('voted card + share page; bad option 404', async () => {
     const svg = await (await get('/api/og/voted/1/1.svg')).text();
-    expect(svg).toContain('I VOTED'); expect(svg).toContain('B — SPY');
+    expect(svg).toContain('width="1200"'); expect(svg).toContain('I'); expect(svg).toContain('VOTED'); expect(svg).toContain('B — SPY');
     expect(svg).toContain('$WIF BURNED');
     const numbered = await (await get('/api/og/voted/1/1/172.svg')).text();
     expect(numbered).toContain('VOTER #172');
+    const poster = await (await get('/api/card/voted/1/1/172.svg')).text();
+    expect(poster).toContain('width="1080"'); expect(poster).toContain('height="1080"'); expect(poster).toContain('VOTER #172');
     const h = await (await get('/share/voted/1/1')).text();
     expect(h).toContain('I voted SPY'); expect(h).toContain('#/e/1?vote=1');
+    expect(h).toContain('og:image:width" content="1200"');
     expect((await get('/share/voted/1/9')).status).toBe(404);
   });
   it('signed card + share page; unknown gate 404', async () => {
     const svg = await (await get('/api/og/signed/1.svg')).text();
-    expect(svg).toContain('I SIGNED'); expect(svg).toContain('I signed for Open the'); expect(svg).toContain('markets to everyone');
+    expect(svg).toContain('width="1200"'); expect(svg).toContain('SIGNED'); expect(svg).toContain('I signed for Open the'); expect(svg).toContain('markets to everyone');
     expect(svg).toContain('PETITION');
+    const poster = await (await get('/api/card/signed/1.svg')).text();
+    expect(poster).toContain('width="1080"'); expect(poster).toContain('PETITION');
     const h = await (await get('/share/signed/1')).text();
     expect(h).toContain('I signed for Open the markets'); expect(h).toContain('#/rails/1');
     expect((await get('/share/signed/9')).status).toBe(404);
@@ -82,15 +87,18 @@ describe('OG card', () => {
   });
   it('wraps and truncates long titles', () => { expect(wrap('word '.repeat(60), 30, 3)).toHaveLength(3); });
   it('voted and signed cards escape text and carry the motif', () => {
-    const v = votedSvg({ title: '<hack>', letter: 'A', option: 'Yes', burnedWif: 1, voterNo: 7 });
-    expect(v).toContain('VOTER #7'); expect(v).not.toContain('<hack>'); expect(v).toContain('&lt;hack&gt;');
+    const v = votedPoster({ title: '<hack>', letter: 'A', option: 'Yes', burnedWif: 1, voterNo: 7 });
+    expect(v).toContain('width="1080"'); expect(v).toContain('VOTER #7'); expect(v).not.toContain('<hack>'); expect(v).toContain('&lt;hack&gt;');
+    expect(votedSvg({ title: 't', letter: 'A', option: 'Yes', burnedWif: 1, voterNo: 7 })).toContain('width="1200"');
     expect(signedHeadline(0, 'Open the markets')).toBe('I signed for Open the markets');
     expect(signedHeadline(0, 'against late fees')).toBe('I signed against late fees');
     expect(signedHeadline(1, 'Lagos meetup')).toBe("I'm on the RSVP list");
     expect(signedHeadline(2, 'early access')).toBe("I'm on the allow list");
     expect(signedHeadline(3, 'members only')).toBe("I'm on the access list");
-    const s = signedSvg({ kind: 1, title: 'Lagos meetup', burnedWif: 1, position: 3 });
-    expect(s).toContain('I SIGNED'); expect(s).toContain('RSVP'); expect(s).toContain('#3');
+    const s = signedPoster({ kind: 1, title: 'Lagos meetup', burnedWif: 1, position: 3 });
+    expect(s).toContain('SIGNED'); expect(s).toContain('RSVP'); expect(s).toContain('#3');
+    expect(signedPoster({ kind: 2, title: 'early access', burnedWif: 1 }).toUpperCase()).toContain('ALLOWLIST');
+    expect(signedPoster({ kind: 3, title: 'members only', burnedWif: 1 }).toUpperCase()).toContain('ACCESS');
   });
   it('serves svg on demand and PNG when a rasteriser exists', async () => {
     const svg = await get('/api/og/1.svg');

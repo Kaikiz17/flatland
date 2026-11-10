@@ -1,36 +1,28 @@
-import { signedHeadline, signedKindLabel, type GateView } from '@flatland/core';
+import { useState } from 'react';
+import { signedHeadline, type GateView } from '@flatland/core';
 import { Copy } from './ui';
 import { useApp } from '../lib/store';
 import { appBase } from './ShareComposer';
-import { wif } from '../lib/format';
+import { downloadPng } from '../lib/download';
 
-/** Shown after a Sign act lands: a designed "I signed" card + Share on X. */
+/** Collectible 1:1 "I signed" poster + Share on X (landscape OG) + Download PNG. */
 export function SignedCard({ g, position }: { g: GateView; position?: number }) {
   const { cfg } = useApp();
+  const [busy, setBusy] = useState(false);
   const base = appBase(cfg?.appUrl);
-  const url = `${base}/share/signed/${g.id}`;
+  const tail = `${g.id}${position ? `/${position}` : ''}`;
+  const url = `${base}/share/signed/${tail}`;
+  const poster = `/api/card/signed/${tail}.svg`;
   const headline = signedHeadline(g.kind, g.title);
-  const kind = signedKindLabel(g.kind);
   const text = g.kind === 0
     ? `${headline} ✍️ Each act burns $WIF, one per wallet. Sign too:`
     : `${headline} for “${g.title.slice(0, 90)}” on Flatland Sign. Each act burns $WIF, one per wallet:`;
-  const pos = position && position > 0 ? position : undefined;
   return (
-    <div className="sharecard signedcard" data-testid="signed-card">
-      <div className="sharecard-art" aria-hidden="true">
-        <div className="sharecard-sky teal">
-          <div className="sharecard-disc" />
-          <div className="sharecard-seal signed">I<br />SIGNED</div>
-        </div>
-        <div className="sharecard-panel">
-          <div className="sharecard-kicker teal"><span>I SIGNED</span><b>{kind}{pos ? ` · #${pos}` : ''}</b></div>
-          <h3>{headline}</h3>
-          {g.kind !== 0 ? <p className="sharecard-sub">{g.title}</p> : null}
-          <div className="sharecard-burn"><span>$WIF burned</span><b>{wif(g.cost, 2)}</b></div>
-        </div>
-      </div>
-      <div className="row" style={{ marginTop: 10 }}>
+    <div className="poster-wrap" data-testid="signed-card">
+      <img className="poster" src={poster} alt={headline} width={1080} height={1080} />
+      <div className="row" style={{ marginTop: 12, justifyContent: 'center' }}>
         <a className="btn sm teal" href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`} target="_blank" rel="noreferrer">Share on X</a>
+        <button className="btn sm ghost" disabled={busy} onClick={() => { setBusy(true); void downloadPng(poster, `flatland-i-signed-${g.id}.png`).finally(() => setBusy(false)); }}>{busy ? 'Saving…' : 'Download'}</button>
         <Copy text={url} label="Copy link" />
       </div>
     </div>

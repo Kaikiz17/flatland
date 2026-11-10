@@ -1,9 +1,10 @@
+import { useState } from 'react';
 import type { ElectionView } from '@flatland/core';
-import { Copy, color, letter } from './ui';
+import { Copy, letter } from './ui';
 import { useApp } from '../lib/store';
 import { useWallet } from '../lib/wallet';
 import { appBase } from './ShareComposer';
-import { wif } from '../lib/format';
+import { downloadPng } from '../lib/download';
 
 export function voterNumber(e: ElectionView, addr?: string | null): number | undefined {
   if (!addr) return undefined;
@@ -15,33 +16,23 @@ export function voterNumber(e: ElectionView, addr?: string | null): number | und
   return undefined;
 }
 
-/** Shown right after a vote lands: a collectible "I voted" card + Share on X. */
+/** Collectible 1:1 "I voted" poster + Share on X (landscape OG) + Download PNG. */
 export function VotedCard({ e, opt }: { e: ElectionView; opt: number }) {
   const { cfg } = useApp();
   const w = useWallet();
+  const [busy, setBusy] = useState(false);
   const base = appBase(cfg?.appUrl);
   const no = voterNumber(e, w.address);
-  const path = `/voted/${e.id}/${opt}${no ? `/${no}` : ''}`;
-  const url = `${base}/share${path}`;
+  const tail = `${e.id}/${opt}${no ? `/${no}` : ''}`;
+  const url = `${base}/share/voted/${tail}`;
+  const poster = `/api/card/voted/${tail}.svg`;
   const text = `I voted ${letter(opt)} — ${e.options[opt]} on “${e.title.slice(0, 90)}”${no ? ` · voter #${no}` : ''} 🔥 My vote burned $WIF. 1 wallet = 1 vote. Cast yours:`;
-  const burn = wif(e.voteCost, 2);
   return (
-    <div className="sharecard votedcard" data-testid="voted-card">
-      <div className="sharecard-art" aria-hidden="true">
-        <div className="sharecard-sky">
-          <div className="sharecard-disc" />
-          <div className="sharecard-seal voted">I<br />VOTED</div>
-        </div>
-        <div className="sharecard-panel">
-          <div className="sharecard-kicker"><span>I VOTED</span>{no ? <b>Voter #{no}</b> : null}</div>
-          <h3>{e.title}</h3>
-          <div className="sharecard-label">My pick</div>
-          <div className="sharecard-pick"><span className="chip" style={{ background: color(opt) }}>{letter(opt)}</span> {e.options[opt]}</div>
-          <div className="sharecard-burn"><span>$WIF burned</span><b>{burn}</b></div>
-        </div>
-      </div>
-      <div className="row" style={{ marginTop: 10 }}>
+    <div className="poster-wrap" data-testid="voted-card">
+      <img className="poster" src={poster} alt={`I voted ${e.options[opt]}`} width={1080} height={1080} />
+      <div className="row" style={{ marginTop: 12, justifyContent: 'center' }}>
         <a className="btn sm" href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`} target="_blank" rel="noreferrer">Share on X</a>
+        <button className="btn sm ghost" disabled={busy} onClick={() => { setBusy(true); void downloadPng(poster, `flatland-i-voted-${e.id}.png`).finally(() => setBusy(false)); }}>{busy ? 'Saving…' : 'Download'}</button>
         <Copy text={url} label="Copy link" />
       </div>
     </div>

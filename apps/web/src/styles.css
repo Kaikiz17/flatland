@@ -187,31 +187,9 @@ table.t td { padding: 9px 8px; border-bottom: 1px dashed var(--line); }
 .goatfeat { border: 2px solid var(--ink); border-radius: 22px; background: linear-gradient(135deg, #fff3c4, var(--card)); box-shadow: 6px 6px 0 var(--gold); padding: 18px 22px; margin: 18px 0; }
 @media (max-width: 860px) { .stages { grid-template-columns: 1fr; } }
 
-/* collectible I voted / I signed cards */
-.sharecard { margin-top: 14px; }
-.sharecard-art { display: grid; grid-template-columns: 128px 1fr; border-radius: 22px; overflow: hidden; border: 2px solid var(--ink); box-shadow: 6px 6px 0 var(--ink); min-height: 200px; }
-.sharecard-sky { position: relative; background: radial-gradient(circle at 50% 42%, #f2b70588, #10203a 70%); display: grid; place-items: center; }
-.sharecard-sky.teal { background: radial-gradient(circle at 50% 42%, #0fa3a388, #10203a 70%); }
-.sharecard-disc { width: 86px; height: 86px; border-radius: 50%; background: linear-gradient(#9be7e7 0 46%, #f2b705 50%, #c4a574 54%, #6b3f2a 100%); border: 3px solid #fffaf0; box-shadow: 0 0 0 2px #f2b70588, 0 8px 0 #0003; position: relative; }
-.sharecard-disc::after { content: ''; position: absolute; left: -3px; right: -3px; top: 50%; height: 4px; background: #f2b705; border-radius: 2px; }
-.sharecard-seal { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 52px; height: 52px; border-radius: 50%; border: 3px solid #fffaf0; color: #fffaf0; font-size: .58rem; font-weight: 850; letter-spacing: .06em; display: grid; place-items: center; text-align: center; line-height: 1.05; box-shadow: 0 4px 0 #0003; }
-.sharecard-seal.voted { background: var(--accent); }
-.sharecard-seal.signed { background: var(--teal); }
-.sharecard-panel { background: linear-gradient(180deg, #fffaf0, #f3eee1); padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 4px; }
-.sharecard-kicker { display: flex; justify-content: space-between; align-items: baseline; font-family: var(--mono); font-size: .72rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
-.sharecard-kicker.teal { color: var(--teal); }
-.sharecard-kicker b { color: var(--teal); letter-spacing: .04em; }
-.sharecard-kicker.teal b { color: var(--ink); }
-.sharecard-panel h3 { font-size: 1.15rem; margin: 4px 0 6px; }
-.sharecard-label { font-family: var(--mono); font-size: .68rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
-.sharecard-pick { font-weight: 800; font-size: 1.05rem; display: flex; align-items: center; gap: 8px; }
-.sharecard-sub { margin: 0 0 6px; color: var(--muted); font-weight: 650; }
-.sharecard-burn { margin-top: auto; background: var(--ink); color: var(--paper); border-radius: 12px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; font-weight: 800; }
-.sharecard-burn span { font-family: var(--mono); font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: #b5bfd3; }
-.sharecard-burn b { color: #ff5a36; font-family: var(--mono); font-size: 1.15rem; }
-.signedcard .sharecard-burn b { color: #ffd966; }
-@media (max-width: 560px) { .sharecard-art { grid-template-columns: 1fr; } .sharecard-sky { min-height: 120px; } }
-
+/* collectible 1:1 share posters */
+.poster-wrap { margin: 16px auto 0; max-width: 420px; }
+.poster { width: 100%; height: auto; aspect-ratio: 1 / 1; display: block; border-radius: 28px; border: 2px solid #f2b705; box-shadow: 0 0 0 4px #f2b70533, 0 18px 50px #10203a55, 8px 8px 0 #10203a; background: #12081c; }
 .luckyhit { position: fixed; inset: 0; z-index: 80; background: #10203acc; display: grid; place-items: center; padding: 18px; }
 .luckyhit-card { max-width: 420px; width: 100%; background: linear-gradient(180deg, #1a2c4a, #10203a); color: var(--paper); border: 3px solid var(--gold); border-radius: 24px; box-shadow: 0 0 0 6px #f2b70533, 8px 8px 0 #0006; padding: 28px 22px; }
 .luckyhit-card h2 { color: #ffd966; }
