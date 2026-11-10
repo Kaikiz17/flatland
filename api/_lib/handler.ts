@@ -183,54 +183,51 @@ async function mcp(req: Request, env: Env, origin: string): Promise<Response> {
 }
 
 // ───────────────────────────── Telegram webhook ─────────────────────────────
-async function telegram(req: Request, env: Env, origin: string, appUrl: string, waitUntil?: (p: Promise<unknown>) => void): Promise<Response> {
+async function telegram(req: Request, env: Env, origin: string, appUrl: string, _waitUntil?: (p: Promise<unknown>) => void): Promise<Response> {
   if (req.method === 'GET') return json({ bot: 'flatland', configured: !!env.TELEGRAM_BOT_TOKEN, webhook: `${appUrl}/api/telegram`, commands: ['/start', '/elections', '/vote <id> <option>', '/results <id>', 'inline: @bot [id]'] }, 200, { 'cache-control': 'no-store' });
   if (req.method !== 'POST') return json({ error: 'method not allowed' }, 405);
   if (!env.TELEGRAM_BOT_TOKEN) return json({ ok: false, error: 'Telegram bot is not configured (TELEGRAM_BOT_TOKEN secret not set)' }, 503, { 'cache-control': 'no-store' });
+  const REQUIRE_TG_SECRET = true;
   const got = (req.headers.get('x-telegram-bot-api-secret-token') ?? req.headers.get('X-Telegram-Bot-Api-Secret-Token') ?? '').trim();
   const want = (env.TELEGRAM_WEBHOOK_SECRET ?? '').trim();
-  if (want && got !== want) return json({ error: 'forbidden' }, 403);
+  if (REQUIRE_TG_SECRET && want && got !== want) {
+    console.log('tg:forbidden', { hasSecretHeader: !!got });
+    return json({ error: 'forbidden' }, 403);
+  }
   let update: any;
-  try { update = await req.json(); } catch { return json({ error: 'bad json' }, 400); }
+  try { update = await req.json(); } catch { console.log('tg:bad-json'); return json({ error: 'bad json' }, 400); }
 
-  const deliver = async () => {
-    const text = String((update.message ?? update.edited_message)?.text ?? '').trim();
-    const cmd = /^\/(\w+)(?:@\w+)?(?:\s|$)/.exec(text)?.[1]?.toLowerCase();
-    // /start and /help never wait on chain/KV; other commands use a stale snapshot and never fall back to a slow RPC read.
-    let elections: any[] = [];
-    if (cmd !== 'start' && cmd !== 'help') {
-      try {
-        const s = await loadSnapshot(env, origin, { allowStale: true, noRpc: true });
-        elections = (s.elections ?? []).map((e) => {
-          const p = publicElection(s, e, appUrl);
-          return { id: e.id, title: e.title, status: e.status, voteCostWei: e.voteCost, url: p.url, share: p.share, end: e.end, burnedWif: Number(BigInt(e.burned) / 10n ** 16n) / 100, options: p.options.map((o) => ({ index: o.index, letter: o.letter, name: o.name, votes: o.votes, share: o.share, depositAddress: o.depositAddress, voteUrl: o.voteUrl })) };
-        });
-      } catch { elections = []; }
-    }
-    const calls = await telegramCalls(update, elections, appUrl);
-    for (const c of calls) {
-      // the token only ever goes in the URL of this one HTTPS call to Telegram; it is never logged or returned
-      const send = (body: Record<string, unknown>) => fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${c.method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-      const r = await send(c.body);
-      if (!r.ok && c.method === 'sendMessage' && 'reply_to_message_id' in c.body) {
-        const { reply_to_message_id: _ignored, ...rest } = c.body as any;
-        await send(rest);
-      }
-    }
-    return calls.map((c) => c.method);
-  };
+  const text = String((update.message ?? update.edited_message)?.text ?? '').trim();
+  const cmd = /^\/(\w+)(?:@\w+)?(?:\s|$)/.exec(text)?.[1]?.toLowerCase();
+  const chatId = (update.message ?? update.edited_message)?.chat?.id;
+  console.log('tg:in', { method: req.method, cmd: cmd ?? (update.inline_query ? 'inline' : 'text'), chat: chatId ?? null, hasSecretHeader: !!got });
 
-  const work = deliver();
-  if (waitUntil) {
-    waitUntil(work.then(() => undefined, () => undefined));
-    return json({ ok: true, queued: true }, 200, { 'cache-control': 'no-store' });
+  const needsSnap = !!update.inline_query || cmd === 'elections' || cmd === 'live' || cmd === 'vote' || cmd === 'results';
+  let elections: any[] = [];
+  if (needsSnap) {
+    try {
+      const s = await loadSnapshot(env, origin, { allowStale: true, noRpc: true });
+      elections = (s.elections ?? []).map((e) => {
+        const p = publicElection(s, e, appUrl);
+        return { id: e.id, title: e.title, status: e.status, voteCostWei: e.voteCost, url: p.url, share: p.share, end: e.end, burnedWif: Number(BigInt(e.burned) / 10n ** 16n) / 100, options: p.options.map((o) => ({ index: o.index, letter: o.letter, name: o.name, votes: o.votes, share: o.share, depositAddress: o.depositAddress, voteUrl: o.voteUrl })) };
+      });
+    } catch { elections = []; }
   }
-  try {
-    const methods = await work;
-    return json({ ok: true, calls: methods }, 200, { 'cache-control': 'no-store' });
-  } catch {
-    return json({ ok: true, calls: [] }, 200, { 'cache-control': 'no-store' });
+  const calls = await telegramCalls(update, elections, appUrl);
+  const statuses: number[] = [];
+  for (const c of calls) {
+    // the token only ever goes in the URL of this one HTTPS call to Telegram; it is never logged or returned
+    const send = (body: Record<string, unknown>) => fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${c.method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    let r = await send(c.body);
+    if (!r.ok && c.method === 'sendMessage' && 'reply_to_message_id' in c.body) {
+      const { reply_to_message_id: _ignored, ...rest } = c.body as any;
+      r = await send(rest);
+    }
+    statuses.push(r.status);
+    console.log('tg:send', { method: c.method, status: r.status });
   }
+  console.log('tg:done', { n: calls.length, statuses });
+  return json({ ok: true, calls: calls.map((c) => c.method), statuses }, 200, { 'cache-control': 'no-store' });
 }
 
 // ───────────────────────────── router ─────────────────────────────
