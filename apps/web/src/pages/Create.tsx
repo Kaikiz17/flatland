@@ -5,6 +5,7 @@ import { ActionButton, TxStatus, useTx, color, letter } from '../components/ui';
 import { createElection } from '../lib/actions';
 import { go, useRoute } from '../lib/route';
 import { TEMPLATES } from '../lib/templates';
+import { PrizePanel } from '../components/PrizePanel';
 import { BasketTemplate } from '../components/BasketTemplate';
 import { ZERO, isAddr } from '../lib/format';
 import { processImage, uploadImage, uploadMeta } from '../lib/media';
@@ -21,6 +22,7 @@ export function Create() {
 }
 
 function CreateForm({ tpl }: { tpl?: (typeof TEMPLATES)[keyof typeof TEMPLATES] }) {
+  const { query } = useRoute();
   const { dep } = useApp();
   const tx = useTx();
   const [title, setTitle] = useState<string>(tpl?.title ?? '');
@@ -109,6 +111,7 @@ function CreateForm({ tpl }: { tpl?: (typeof TEMPLATES)[keyof typeof TEMPLATES] 
           </div>
           <div className="field"><label>Outcome executor contract</label><input value={executor} onChange={(e) => setExecutor(e.target.value.trim())} placeholder="optional: 0x… implements onFinalize(id, winner, tally)" /><div className="hint">Binds the result to an on-chain action when the election finalizes (the People’s Basket uses this). Gas-capped and retryable.</div></div>
         </details>
+        {query.get('prizes') === '1' ? <PrizePanel /> : null}
         {problems.length ? <ul className="small err" style={{ paddingLeft: 18 }}>{problems.map((p) => <li key={p}>{p}</li>)}</ul> : null}
         <ActionButton className="btn block" tx={tx} disabled={problems.length > 0} onRun={async (s) => {
           // upload images first (no gas, no wallet): then a small JSON blob maps option index -> image and becomes the on-chain metaURI

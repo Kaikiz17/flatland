@@ -67,3 +67,8 @@ Last updated: 2026-11-10 (Lagos, 13:20).
 - "I voted" card after a vote, `/share/voted/<id>/<opt>`.
 - Stock Pot showcase (executed-on-chain moment from vault logs), `?template=basket`, plain wording for Stock Pot and Send-to-act with 3-step strips. Steps to run: docs/stock-pot-run.md
 - Not done on purpose: tallier redeploy.
+
+## Phase (i) prize rules + deferred list
+- `contracts/src/PrizeRules.sol` + `contracts/test/PrizeRules.t.sol` (10 pass), docs/prize-rules.md (gas: ~1.97M, ~$0.13), Create preview behind `#/create?prizes=1`. NOT deployed.
+- Lucky voters are plain on-chain numbers set at create (no commit-reveal), instant permissionless `payLucky`; see docs.
+- Everything requested (phases 1-4, g, h, i) is built; the Telegram bot only works once TELEGRAM_BOT_TOKEN is set (not set). Tallier not redeployed.
