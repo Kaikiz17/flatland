@@ -16,6 +16,7 @@ import { voteLinks } from '../../packages/core/src/votelink.ts';
 import type { Deployment } from '../../packages/core/src/deployment.ts';
 import { ogSvg, svgToPng } from './og.ts';
 import { loadMedia, type KVLike, type Media } from './media.ts';
+import { telegramCalls } from './telegram.ts';
 
 export interface Env {
   INDEXER_URL?: string; // preferred: the always-on indexer (live + sybil groups)
@@ -31,6 +32,9 @@ export interface Env {
   staticTwitterImage?: boolean;
   /** Edge workers: KV for option images + election metadata blobs (see media.ts). */
   kv?: KVLike;
+  /** Worker secrets (never logged). Telegram stays disabled until TELEGRAM_BOT_TOKEN is set. */
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_WEBHOOK_SECRET?: string;
 }
 
 type Full = Snapshot & { analysis?: Record<number, Analysis> };
@@ -172,6 +176,28 @@ async function mcp(req: Request, env: Env, origin: string): Promise<Response> {
   return r ? json(r, 200, { 'cache-control': 'no-store' }) : new Response(null, { status: 202 });
 }
 
+// ───────────────────────────── Telegram webhook ─────────────────────────────
+async function telegram(req: Request, env: Env, origin: string, appUrl: string): Promise<Response> {
+  if (req.method === 'GET') return json({ bot: 'flatland', configured: !!env.TELEGRAM_BOT_TOKEN, webhook: `${appUrl}/api/telegram`, commands: ['/start', '/elections', '/vote <id> <option>', '/results <id>', 'inline: @bot [id]'] }, 200, { 'cache-control': 'no-store' });
+  if (req.method !== 'POST') return json({ error: 'method not allowed' }, 405);
+  if (!env.TELEGRAM_BOT_TOKEN) return json({ ok: false, error: 'Telegram bot is not configured (TELEGRAM_BOT_TOKEN secret not set)' }, 503, { 'cache-control': 'no-store' });
+  if (env.TELEGRAM_WEBHOOK_SECRET && req.headers.get('x-telegram-bot-api-secret-token') !== env.TELEGRAM_WEBHOOK_SECRET) return json({ error: 'forbidden' }, 403);
+  let update: any;
+  try { update = await req.json(); } catch { return json({ error: 'bad json' }, 400); }
+  const s = await loadSnapshot(env, origin);
+  const elections = await Promise.all(s.elections.map(async (e) => {
+    const p = publicElection(s, e, appUrl, await loadMedia(env.kv, e.metaURI));
+    return { id: e.id, title: e.title, status: e.status, voteCostWei: e.voteCost, url: p.url, share: p.share, end: e.end, burnedWif: Number(BigInt(e.burned) / 10n ** 16n) / 100, options: p.options.map((o) => ({ index: o.index, letter: o.letter, name: o.name, votes: o.votes, share: o.share, depositAddress: o.depositAddress, voteUrl: o.voteUrl })) };
+  }));
+  const calls = await telegramCalls(update, elections, appUrl);
+  for (const c of calls) {
+    // the token only ever goes in the URL of this one HTTPS call to Telegram; it is never logged or returned
+    const r = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${c.method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(c.body) });
+    if (!r.ok) return json({ ok: false, error: `telegram ${c.method} failed (${r.status})` }, 200, { 'cache-control': 'no-store' }); // 200: never make Telegram retry-storm us
+  }
+  return json({ ok: true, calls: calls.map((c) => c.method) }, 200, { 'cache-control': 'no-store' });
+}
+
 // ───────────────────────────── router ─────────────────────────────
 export async function handle(req: Request, env: Env = {}): Promise<Response> {
   const url = new URL(req.url);
@@ -181,6 +207,7 @@ export async function handle(req: Request, env: Env = {}): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS' } });
   try {
     if (path.endsWith('/api/mcp')) return await mcp(req, env, origin);
+    if (path.endsWith('/api/telegram')) return await telegram(req, env, origin, appUrl);
     const s = await loadSnapshot(env, origin);
     if (path.endsWith('/api/stats')) return json(statsOf(s));
     if (path.endsWith('/api/elections')) {

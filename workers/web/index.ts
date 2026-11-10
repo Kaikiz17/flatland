@@ -11,6 +11,8 @@ import { handleMedia } from '../../api/_lib/media.ts';
 interface Env {
   KV: KVNamespace;
   RPC_URL?: string;
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_WEBHOOK_SECRET?: string;
 }
 
 const STALE_MS = 45 * 60_000;
@@ -70,6 +72,8 @@ export default {
     if (p.startsWith('/api/') || p === '/api' || p.startsWith('/share/') || p.startsWith('/v/')) {
       return handle(req, {
         kv: env.KV,
+        TELEGRAM_BOT_TOKEN: env.TELEGRAM_BOT_TOKEN,
+        TELEGRAM_WEBHOOK_SECRET: env.TELEGRAM_WEBHOOK_SECRET,
         APP_URL: url.origin,
         RPC_URL: env.RPC_URL ?? 'https://4663.rpc.thirdweb.com',
         deployment: deployment as any,

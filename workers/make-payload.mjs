@@ -12,7 +12,7 @@ const compat = { compatibility_date: '2026-10-01', compatibility_flags: ['nodejs
 if (which === 'web') {
   const worker = readFileSync(join(root, 'workers/dist/web.js'), 'utf8');
   const metadata = {
-    main_module: 'index.js', ...compat, observability: { enabled: true },
+    main_module: 'index.js', ...compat, observability: { enabled: true }, keep_bindings: ['secret_text'], // keeps TELEGRAM_BOT_TOKEN / TELEGRAM_WEBHOOK_SECRET across redeploys
     bindings: [{ type: 'kv_namespace', name: 'KV', namespace_id: kvId }],
   };
   console.log(`async () => {

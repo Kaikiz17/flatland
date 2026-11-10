@@ -84,6 +84,23 @@ const api = await (await fetch(`${WEB}/api/elections/${id}`)).json();
 ok(api.options[0].image?.includes('/img/') && api.options[1].image, 'API exposes option images');
 ok(errs.length === 0, 'no page errors ' + errs.join('|'));
 
+console.log('phase 2: share composer + one-tap links');
+await p.goto(WEB + `/#/e/${id}`);
+await p.waitForSelector('#share textarea');
+const ta = await p.locator('#share textarea').inputValue();
+ok(/Reply or tap to vote: A Sun · B Sea/.test(ta), 'composer prefilled: ' + ta.split('\n')[1]);
+const hrefs = await p.locator('#share a.btn').evaluateAll((l) => l.map((a) => a.href));
+ok(hrefs[0].startsWith('https://twitter.com/intent/tweet?text=') && hrefs[0].includes(encodeURIComponent('/share/' + id)), 'Post on X intent carries text + share url');
+ok(hrefs.some((h) => decodeURIComponent(h).includes(`/v/${id}/1`)), 'per-option X post carries /v/<id>/<opt>');
+const vp = await fetch(`${WEB}/v/${id}/1`);
+const vh = await vp.text();
+ok(vp.status === 200 && vh.includes('Vote Sea') && vh.includes(`#/e/${id}?vote=1`) && vh.includes('A Sun'), '/v/<id>/<opt> preview page: option title, tally in description, redirect to ?vote=1');
+ok((await fetch(`${WEB}/v/${id}/9`)).status === 404, '/v/<id>/<bad option> is 404');
+await p.goto(WEB + `/#/e/${id}?vote=1`);
+await p.waitForSelector('.opt[aria-pressed="true"]');
+ok(await p.locator('.opt').nth(1).getAttribute('aria-pressed') === 'true', '?vote=1 preselects option B');
+await shot(p, '19-share-composer-desktop.png', true);
+
 console.log('no-image election still renders');
 await p.goto(WEB + '/#/e/1');
 await p.waitForSelector('.opt');

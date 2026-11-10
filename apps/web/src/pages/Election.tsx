@@ -7,6 +7,7 @@ import { useRoute } from '../lib/route';
 import { challenge, claimPrize, finalize, fundPrize, seedDraw, vote, setCountry } from '../lib/actions';
 import { ActionButton, CountUp, Copy, OptImg, TxStatus, color, letter, useNow, useTx, Empty } from '../components/ui';
 import { imgUrl, useMedia } from '../lib/media';
+import { ShareComposer } from '../components/ShareComposer';
 import { DepositPanel } from '../components/DepositPanel';
 import { FairnessCard } from '../components/Fairness';
 import { WorldMap } from '../components/WorldMap';
@@ -156,11 +157,7 @@ function Room({ e }: { e: ElectionView }) {
           </div>
           <div className="card"><h3>Voter map</h3><WorldMap counts={counts} pulses={pulses} /><CountryOptIn /></div>
           <FairnessCard e={e} a={a} />
-          <div className="card">
-            <h3>Share</h3>
-            <div className="row"><a className="btn sm" href={xHref} target="_blank" rel="noreferrer">Post on X</a><Copy text={shareUrl} label="Copy link" /></div>
-            <p className="small muted" style={{ marginBottom: 0 }}>Bot-friendly: replying “vote {letter(Math.min(1, e.options.length - 1))}” to the Flatland bot returns a ready-to-send 1 $WIF transfer link.</p>
-          </div>
+          <ShareComposer e={e} tallies={a.liveTallies} />
         </div>
       </div>
       <style>{`@media (max-width: 860px) { [data-stack] { grid-template-columns: minmax(0,1fr) !important; } }`}</style>
