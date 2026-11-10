@@ -11,8 +11,10 @@ Last updated: 2026-11-10 (Lagos).
 - packages/bot (Telegram + X dry-run handler, link generator): 7 vitest
 - scripts/demo-local.sh (anvil fork + seed + indexer + web), scripts/seed.mts
 
-## In progress / remaining
-1. scripts/ui-e2e.mjs (Playwright + injected wallet) — debug wallet modal step (uses /workspace/shots/node_modules/playwright-core)
-2. Gasless first-vote UI (contracts+tests done; web panel + TS userOp builder + e2e step missing)
-3. README (architecture, flywheel, trust model, deploy for Vercel/Cloudflare, known limitations, go-live checklist)
-4. Final: rerun all tests, branding grep (no Robinhood in UI), commit, report
+## Finished this session
+- UI e2e (Playwright + injected wallet, mobile no-overflow) PASSED
+- Gasless first vote: core builder (gasless.ts, vitest), e2e step on the real EntryPoint (zero-ETH account votes, WIF burned, second sponsorship rejected), UI panel on /me
+- README written; branding grep clean (Robinhood only in RPC/explorer URLs and the wallet add-chain name)
+
+## Remaining
+- Final full test rerun, then report. Nothing pushed, nothing deployed.
