@@ -1,9 +1,9 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { createPublicClient, createWalletClient, http, type Address, type Chain, type PublicClient, type WalletClient, type Account } from 'viem';
+import { createPublicClient, createWalletClient, http, type Address, type Chain, type PublicClient, type Transport, type WalletClient, type Account } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import {
-  analyzeElection, flatlandAbi, readSnapshot, type Deployment, type Snapshot, type ElectionView, type FundingProvider, type Analysis,
+  analyzeElection, flatlandAbi, readSnapshot, type LogCache, type Deployment, type Snapshot, type ElectionView, type FundingProvider, type Analysis,
 } from '@flatland/core';
 import { planElection, type ElectionPlan } from './tally.js';
 import { cached } from './funding.js';
@@ -22,6 +22,10 @@ export interface ServiceConfig {
   edge?: boolean;
   /** Edge mode: return false to hold back attestations/collapses (e.g. funding lookups still incomplete). */
   canAttest?: () => boolean;
+  /** Edge mode: custom (fallback) transport, persisted log cache and log window size. */
+  transport?: Transport;
+  logCache?: LogCache;
+  logRange?: bigint;
 }
 
 export type IndexedSnapshot = Snapshot & { analysis: Record<number, Analysis>; tallier: { address: Address | null; active: boolean } };
@@ -37,11 +41,11 @@ export class FlatlandService {
   log: (m: string) => void;
 
   constructor(public cfg: ServiceConfig) {
-    this.client = createPublicClient({ chain: cfg.chain, transport: http(cfg.rpc, cfg.edge ? { batch: true } : undefined) }) as PublicClient;
+    this.client = createPublicClient({ chain: cfg.chain, transport: cfg.transport ?? http(cfg.rpc, cfg.edge ? { batch: true } : undefined) }) as PublicClient;
     this.log = cfg.log ?? ((m) => console.log(new Date().toISOString(), m));
     if (cfg.tallierKey) {
       this.account = privateKeyToAccount(cfg.tallierKey);
-      this.wallet = createWalletClient({ account: this.account, chain: cfg.chain, transport: http(cfg.rpc) });
+      this.wallet = createWalletClient({ account: this.account, chain: cfg.chain, transport: cfg.transport ?? http(cfg.rpc) });
     }
     const cachePath = join(cfg.dataDir, 'funding-cache.json');
     if (!cfg.edge && existsSync(cachePath)) {
@@ -68,7 +72,7 @@ export class FlatlandService {
   /** One full pass: read chain → analyse → (if tallier) attest/collapse/resolve → (if keeper) sweep/finalize/seed/claim. */
   async tick(): Promise<IndexedSnapshot> {
     const dep = this.cfg.deployment;
-    const snap = await readSnapshot(this.client, dep, { log: this.log });
+    const snap = await readSnapshot(this.client, dep, { log: this.log, logCache: this.cfg.logCache, maxRange: this.cfg.logRange });
     const analysis: Record<number, Analysis> = {};
     for (const e of snap.elections) {
       const plan = await planElection(e, this.funding);

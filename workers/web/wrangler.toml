@@ -11,7 +11,7 @@ workers_dev = true
 enabled = true
 
 [vars]
-RPC_URL = "https://rpc.mainnet.chain.robinhood.com"
+# RPC_URL = "https://<keyed endpoint, e.g. Alchemy>"   # optional, tried first (use a secret for keyed URLs)
 
 [[kv_namespaces]]
 binding = "KV"

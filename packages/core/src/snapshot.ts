@@ -110,9 +110,16 @@ export interface Snapshot {
   standing: Record<string, { votes: number; acts: number; streak: number; bestStreak: number; tier: number; burned: string }>;
 }
 
+/** Optional persistence for logs already fetched (edge workers keep it in KV so each pass only scans new blocks). */
+export interface LogCache {
+  get(key: string): Promise<{ to: string; logs: Log[] } | null>;
+  put(key: string, v: { to: string; logs: Log[] }): Promise<void>;
+}
+
 export interface ReadOptions {
   fromBlock?: bigint;
   maxRange?: bigint;
+  logCache?: LogCache;
   withDeposits?: boolean;
   /** only fetch block timestamps for the latest N vote logs (older ones get approximate ts) */
   log?: (m: string) => void;
@@ -133,6 +140,40 @@ async function getLogsChunked(client: PublicClient, p: { address: Address | Addr
   };
   for (let a = p.from; a <= p.to; a += p.maxRange) await run(a, a + p.maxRange - 1n > p.to ? p.to : a + p.maxRange - 1n);
   return out;
+}
+
+const REORG_MARGIN = 64n;
+/** getLogs with a persistent cursor: only blocks after the cached cursor are scanned, progress is saved even if a chunk fails. */
+async function getLogsCached(client: PublicClient, cache: LogCache | undefined, key: string, p: Parameters<typeof getLogsChunked>[1]) {
+  if (!cache) return getLogsChunked(client, p);
+  const hit = await cache.get(key);
+  const have: Log[] = hit && BigInt(hit.to) >= p.from - 1n ? hit.logs : [];
+  let cursor = hit && BigInt(hit.to) >= p.from - 1n ? BigInt(hit.to) : p.from - 1n;
+  const start = cursor;
+  const fresh: Log[] = [];
+  let failure: unknown;
+  // chunks are fetched concurrently (a batching transport folds them into one HTTP request); only the contiguous
+  // prefix of successful chunks advances the cursor
+  const chunks: [bigint, bigint][] = [];
+  for (let a = cursor + 1n; a <= p.to; a += p.maxRange) chunks.push([a, a + p.maxRange - 1n > p.to ? p.to : a + p.maxRange - 1n]);
+  for (let i = 0; i < chunks.length && !failure; i += 20) {
+    const group = chunks.slice(i, i + 20);
+    const res = await Promise.allSettled(group.map(([a, b]) => getLogsChunked(client, { ...p, from: a, to: b })));
+    for (let j = 0; j < res.length; j++) {
+      const r = res[j];
+      if (r.status === 'rejected') { failure = r.reason; break; }
+      fresh.push(...r.value);
+      cursor = group[j][1];
+    }
+  }
+  // persist everything up to `cursor - margin` (the tip may still reorg); logs in the margin are re-fetched next time
+  const safe = cursor - REORG_MARGIN > start ? cursor - REORG_MARGIN : start;
+  const all = [...have, ...fresh];
+  // KV writes are scarce on the free plan: persist only when there are new logs, a first scan, or the cursor moved a lot
+  if (safe > start && (fresh.length || !hit || safe - start > 2_000n)) await cache.put(key, { to: safe.toString(), logs: all.filter((l) => (l.blockNumber ?? 0n) <= safe) });
+  if (failure) throw failure;
+  const seen = new Set<string>();
+  return all.filter((l) => { const k = `${l.blockHash}:${l.logIndex}`; if (seen.has(k)) return false; seen.add(k); return true; }) as Log[];
 }
 
 const blockTsCache = new Map<bigint, number>();
@@ -158,10 +199,12 @@ export async function readSnapshot(client: PublicClient, dep: Deployment, opts: 
   const now = Number((await client.getBlock({ blockNumber: head })).timestamp);
   const hub = { address: dep.flatland, abi: flatlandAbi } as const;
 
-  const hubLogs = parseEventLogs({ abi: flatlandAbi, logs: (await getLogsChunked(client, { address: dep.flatland, from, to: head, maxRange })) as any });
-  const gateLogs = parseEventLogs({ abi: wifGateAbi, logs: (await getLogsChunked(client, { address: dep.gate, from, to: head, maxRange })) as any });
-  const standLogs = parseEventLogs({ abi: standingAbi, logs: (await getLogsChunked(client, { address: dep.standing, from, to: head, maxRange })) as any });
-  const vaultLogs = parseEventLogs({ abi: basketVaultAbi, logs: (await getLogsChunked(client, { address: dep.basket, from, to: head, maxRange })) as any });
+  const scan = (addr: Address) => getLogsCached(client, opts.logCache, `all:${addr}`, { address: addr, from, to: head, maxRange });
+  const [hubRaw, gateRaw, standRaw, vaultRaw] = await Promise.all([scan(dep.flatland), scan(dep.gate), scan(dep.standing), scan(dep.basket)]);
+  const hubLogs = parseEventLogs({ abi: flatlandAbi, logs: hubRaw as any });
+  const gateLogs = parseEventLogs({ abi: wifGateAbi, logs: gateRaw as any });
+  const standLogs = parseEventLogs({ abi: standingAbi, logs: standRaw as any });
+  const vaultLogs = parseEventLogs({ abi: basketVaultAbi, logs: vaultRaw as any });
 
   // ── elections ──
   const byId = new Map<number, ElectionView>();
@@ -236,11 +279,14 @@ export async function readSnapshot(client: PublicClient, dep: Deployment, opts: 
     const boxToElection = new Map<string, { id: number; option: number }>();
     for (const e of byId.values()) e.depositAddresses.forEach((b, o) => boxToElection.set(b.toLowerCase(), { id: e.id, option: o }));
     const boxes = [...boxToElection.keys()].map((b) => getAddress(b));
+    // boxes cannot receive qualifying votes before their election exists: scan from the first creation block
+    const firstCreated = hubLogs.filter((l) => l.eventName === 'ElectionCreated').reduce((m, l) => (l.blockNumber! < m ? l.blockNumber! : m), head);
+    const depFrom = firstCreated > from ? firstCreated : from;
     for (let i = 0; i < boxes.length; i += 150) {
       const part = boxes.slice(i, i + 150);
       const logs = parseEventLogs({
         abi: erc20Abi,
-        logs: (await getLogsChunked(client, { address: dep.wif, from, to: head, maxRange, event: erc20Abi[6], args: { to: part } })) as any,
+        logs: (await getLogsCached(client, opts.logCache, `box:${part.length}:${part[0]}`, { address: dep.wif, from: depFrom, to: head, maxRange, event: erc20Abi[6], args: { to: part } })) as any,
       });
       await prefetchTs(client, logs.map((l) => l.blockNumber!));
       const seen = new Set<string>();

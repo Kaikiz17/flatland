@@ -13,7 +13,7 @@ crons = ["* * * * *"]
 enabled = true
 
 [vars]
-RPC_URL = "https://rpc.mainnet.chain.robinhood.com"
+# RPC_URL = "https://<keyed endpoint, e.g. Alchemy>"   # optional, tried first (use a secret for keyed URLs)
 APP_URL = "https://flatland.flatland.workers.dev"
 
 [[kv_namespaces]]

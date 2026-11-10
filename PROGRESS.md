@@ -34,3 +34,9 @@ Last updated: 2026-11-10 (Lagos, 13:20).
 - Cron changes can take up to ~15 min to propagate on a new schedule. Status: `GET /api/status` (reads KV heartbeat, max 10 min old).
 - Secret hygiene: key only in Worker secret; payload file with the key was mode 600 in /tmp and shredded; repo + built bundles scanned for the key (0 hits).
 - No elections exist on mainnet yet, so tallier duties are idle until the first election is created.
+
+## Cloudflare status (final)
+- Live: https://flatland.flatland.workers.dev (Worker `flatland`, static embedded; assets upload 401'd from connector). Tallier: `flatland-tallier`, cron `* * * * *`, secret `TALLIER_KEY`, KV `flatland`.
+- Thin idle path + lazy full pass; KV log cursor; 1000-block concurrent log chunks (thirdweb cap). Full pass verified: error null, tallierActive true, 11 subrequests.
+- 0 elections on mainnet yet, so no on-chain tallier action has been exercised end-to-end.
+- TODO: keyed RPC as `RPC_URL` secret for reliability; watch CPU on full passes.

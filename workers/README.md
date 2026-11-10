@@ -48,3 +48,13 @@ The Workers Assets upload API needs the upload-session JWT as a bearer token. Th
 - **No SSE `/stream`.** Live rooms use RPC polling (6 s).
 - **Cron granularity** is 1 minute, so a deposit-path vote is recorded on-chain at the next election end (that is when the Merkle root is attested), not instantly. Sweeps and finalize happen within about a minute of becoming possible.
 - Free-plan CPU limit: if a very large election makes a full pass exceed 10 ms, the tick is killed and retried next minute; the upgrade is the $5 Workers Paid plan (not done).
+
+## RPC notes (keyless public RPCs from Cloudflare egress)
+
+Findings from the live deploy (Nov 2026):
+- The official RPC (`rpc.mainnet.chain.robinhood.com`) returns HTTP 429 to Cloudflare's shared egress IPs; publicnode needs a token for older blocks; drpc free rejects `eth_getLogs` ranges it considers too wide; thirdweb caps `eth_getLogs` at **1000 blocks** and rate-limits bursts. Blockscout is behind a Cloudflare challenge, so funding-source lookups return null.
+- The tallier therefore scans logs in 1000-block chunks, fetched concurrently (one batched HTTP request), with a KV cursor so only new blocks are read, and walks a fallback list of endpoints.
+- Passes still occasionally hit 429s; the next minute's tick retries (all duties are re-derived from chain state, so nothing is lost).
+- **For production reliability set a keyed RPC** (e.g. an Alchemy/Infura-style URL for chain 4663) as the `RPC_URL` secret on `flatland-tallier` (comma-separated list allowed); it is tried first.
+
+Free-plan CPU caveat: the idle tick (raw JSON-RPC counter read + KV) is tiny; a full pass (viem + snapshot) can exceed the 10 ms CPU budget occasionally. It runs only when counters change, a deadline is reached, or every 30 min (5 min while any election is not final). Cron changes can take up to ~15 min to propagate.

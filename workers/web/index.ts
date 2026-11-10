@@ -12,7 +12,7 @@ interface Env {
   RPC_URL?: string;
 }
 
-const STALE_MS = 30 * 60_000;
+const STALE_MS = 45 * 60_000;
 const cors = { 'access-control-allow-origin': '*' };
 
 async function state(env: Env): Promise<any | null> {
@@ -61,7 +61,7 @@ export default {
     if (p.startsWith('/api/') || p === '/api' || p.startsWith('/share/')) {
       return handle(req, {
         APP_URL: url.origin,
-        RPC_URL: env.RPC_URL,
+        RPC_URL: env.RPC_URL ?? 'https://4663.rpc.thirdweb.com',
         deployment: deployment as any,
         staticTwitterImage: true,
         getSnapshot: async () => {
