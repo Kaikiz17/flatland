@@ -21,7 +21,7 @@ export function Home() {
         <div className="row" style={{ marginTop: 18 }}>
           <a className="btn" href="#/elections">Vote now</a>
           <a className="btn ghost" href="#/create">Start an election</a>
-          <a className="btn ghost" href="#/basket">Community Stock Pot 🧺</a>
+          <a className="btn ghost" href="#/basket">People’s Basket 🧺</a>
         </div>
       </section>
       <BurnHero />
@@ -45,8 +45,8 @@ export function Home() {
       <h2 style={{ marginTop: 40 }}>Three things, one flat rule</h2>
       <div className="grid g3">
         <div className="card"><h3>① Elections for everyone</h3><p>Anyone creates an election: options, deadline, vote cost (≥1 $WIF), optional prize pool. 1 wallet = 1 vote. A verifiable future-block draw rewards voters. Vote with your wallet <i>or</i> just send 1 $WIF to an option’s address from any wallet app.</p><a href="#/create"><b>Create →</b></a></div>
-        <div className="card"><h3>② Community Stock Pot</h3><p>Put in dollars. $WIF holders vote which stock it buys, 1 wallet = 1 vote. The contract buys the winners by itself, and you can withdraw your share anytime.</p><a href="#/basket"><b>See the Stock Pot →</b></a></div>
-        <div className="card"><h3>③ Send-to-act links</h3><p>Send 1 $WIF to an address from any wallet to vote, RSVP, sign or join. No website needed, and each one burns $WIF.</p><a href="#/rails"><b>Browse the links →</b></a></div>
+        <div className="card"><h3>② People’s Basket — the community stock pot</h3><p>Put in dollars. $WIF holders vote which stock it buys, 1 wallet = 1 vote. The contract buys the winners by itself, and you can withdraw your share anytime.</p><a href="#/basket"><b>See the Stock Pot →</b></a></div>
+        <div className="card"><h3>③ Rails — send-to-act links</h3><p>Send 1 $WIF to an address from any wallet to vote, RSVP, sign or join. No website needed, and each one burns $WIF.</p><a href="#/rails"><b>Browse the links →</b></a></div>
       </div>
 
       <h2 style={{ marginTop: 40 }}>The flywheel</h2>

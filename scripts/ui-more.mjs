@@ -46,9 +46,9 @@ await shot(p, '21-stock-pot-showcase-desktop.png', true);
 await p.goto(WEB + '/#/rails');
 await p.waitForSelector('.steps');
 const rt = await p.locator('main').innerText();
-ok(rt.includes('Send 1 $WIF to an address from any wallet to vote, RSVP, sign or join. No website needed.'), 'rails one-liner');
+ok(rt.includes('Send 1 $WIF to an address from any wallet to vote, RSVP, sign or join. No website, no sign-up'), 'rails one-liner');
 ok(await p.locator('.steps li').count() === 3, 'rails 3-step strip');
-ok((await p.locator('nav.nav').innerText()).includes('Stock Pot') && (await p.locator('nav.nav').innerText()).includes('Send-to-act'), 'nav renamed');
+ok((await p.locator('nav.nav').innerText()).includes('People’s Basket') && (await p.locator('nav.nav').innerText()).includes('Rails'), 'nav renamed');
 
 console.log('Flat Score');
 await p.goto(WEB + `/#/score/${VOTER}`);

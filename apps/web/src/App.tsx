@@ -16,8 +16,8 @@ import { Score } from './pages/Score';
 
 const NAV = [
   ['elections', 'Elections', 'M4 5h16v3H4zM4 11h16v3H4zM4 17h10v3H4z'],
-  ['basket', 'Stock Pot', 'M3 9h18l-2 11H5zM8 9l3-5M16 9l-3-5'],
-  ['rails', 'Send-to-act', 'M5 3v18M19 3v18M5 8h14M5 16h14'],
+  ['basket', 'People’s Basket', 'M3 9h18l-2 11H5zM8 9l3-5M16 9l-3-5'],
+  ['rails', 'Rails', 'M5 3v18M19 3v18M5 8h14M5 16h14'],
   ['leaderboard', 'Board', 'M5 20V10h4v10zM10 20V4h4v16zM15 20v-7h4v7z'],
   ['create', 'Create', 'M12 5v14M5 12h14'],
 ] as const;

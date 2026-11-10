@@ -17,8 +17,8 @@ export function Rails({ focus }: { focus?: number }) {
   const gates = [...(snap?.gates ?? [])].reverse();
   return (
     <>
-      <div className="row between"><h2>Send-to-act links</h2><button className="btn" onClick={() => setShow(!show)}>{show ? 'Close' : '+ New link'}</button></div>
-      <p className="lead" style={{ maxWidth: 680 }}><b>Send 1 $WIF to an address from any wallet to vote, RSVP, sign or join. No website needed.</b></p>
+      <div className="row between"><h2>Rails — send-to-act links</h2><button className="btn" onClick={() => setShow(!show)}>{show ? 'Close' : '+ New link'}</button></div>
+      <p className="lead" style={{ maxWidth: 680 }}><b>Send 1 $WIF to an address from any wallet to vote, RSVP, sign or join. No website, no sign-up, no gas games.</b> It’s recorded on-chain, one per wallet, and can’t be faked.</p>
       <Steps items={[['Pick a link', 'Petition, RSVP, list or access pass.'], ['Send 1 $WIF', 'From any wallet app to the address on the card.'], ['You’re counted', 'It’s recorded on-chain and burns your $WIF. One per wallet.']]} />
       <p className="small muted" style={{ maxWidth: 680 }}>For developers: apps can read <code>hasActed(gateId, wallet)</code> or embed the <a href="#/build">widget</a>.</p>
       {show ? <NewGate onDone={() => setShow(false)} /> : null}

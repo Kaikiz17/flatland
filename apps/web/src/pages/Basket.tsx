@@ -54,9 +54,9 @@ export function Basket() {
   return (
     <>
       <div className="hero" style={{ paddingTop: 6 }}>
-        <div className="kicker">Community Stock Pot</div>
-        <h1 style={{ fontSize: 'clamp(2rem, 6vw, 3.4rem)' }}>The Community <em style={{ fontStyle: 'normal', background: 'var(--teal)', color: '#fff', padding: '0 .15em', borderRadius: 8, boxShadow: '4px 4px 0 var(--ink)' }}>Stock Pot</em> 🧺</h1>
-        <p className="lead"><b>Put in dollars. $WIF holders vote which stock it buys. Withdraw your share anytime.</b> Votes are 1 wallet = 1 vote, so a small holder counts as much as a whale.</p>
+        <div className="kicker">People’s Basket · the community stock pot</div>
+        <h1 style={{ fontSize: 'clamp(2rem, 6vw, 3.4rem)' }}>The People’s Basket <em style={{ fontStyle: 'normal', background: 'var(--teal)', color: '#fff', padding: '0 .15em', borderRadius: 8, boxShadow: '4px 4px 0 var(--ink)' }}>Community Stock Pot</em> 🧺</h1>
+        <p className="lead"><b>Put in dollars. $WIF holders vote which stock it buys. Withdraw your share anytime.</b> One wallet = one vote, so a small holder counts as much as a whale. No fund manager: the contract buys what the internet picked.</p>
         <Steps items={[['Put in dollars', 'Deposit USDG and own a share of the pot.'], ['Holders vote', 'Burn 1 $WIF to pick which stocks it buys.'], ['Pot buys, you withdraw', 'The contract buys the winners. Take your share out anytime.']]} />
       </div>
       <BasketShowcase />
