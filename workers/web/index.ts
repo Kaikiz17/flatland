@@ -6,6 +6,7 @@
 import { handle } from '../../api/_lib/handler.ts';
 import deployment from '../../deployments/robinhood-mainnet.json';
 import { STATIC } from './assets.gen.ts';
+import { handleMedia } from '../../api/_lib/media.ts';
 
 interface Env {
   KV: KVNamespace;
@@ -58,8 +59,17 @@ export default {
       return new Response(JSON.stringify({ ok: !!st && Date.now() - (st.lastBeat ?? 0) < STALE_MS, state: st, status }), { headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...cors } });
     }
 
-    if (p.startsWith('/api/') || p === '/api' || p.startsWith('/share/')) {
+    // option images + election metadata blobs (KV, immutable, content-addressed)
+    if (p === '/api/img' || p === '/api/meta' || p.startsWith('/img/') || p.startsWith('/m/')) {
+      try {
+        const r = await handleMedia(req, env.KV, p);
+        if (r) return r;
+      } catch (e) { return new Response(JSON.stringify({ error: 'media error' }), { status: 500, headers: { 'content-type': 'application/json' } }); }
+    }
+
+    if (p.startsWith('/api/') || p === '/api' || p.startsWith('/share/') || p.startsWith('/v/')) {
       return handle(req, {
+        kv: env.KV,
         APP_URL: url.origin,
         RPC_URL: env.RPC_URL ?? 'https://4663.rpc.thirdweb.com',
         deployment: deployment as any,

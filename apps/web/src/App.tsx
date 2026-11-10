@@ -1,5 +1,6 @@
 import { Logo } from './components/ui';
 import { WalletButton } from './components/Wallet';
+import { BurnPill } from './components/BurnHero';
 import { useApp } from './lib/store';
 import { useRoute } from './lib/route';
 import { Home } from './pages/Home';
@@ -47,6 +48,7 @@ export function App() {
             <a href="#/build" className={page === 'build' ? 'on' : ''}>Build</a>
           </nav>
           <div className="spacer" />
+          {dep ? <BurnPill /> : null}
           {cfg ? <span className="chain-pill" title={mode === 'indexer' ? 'Live from the indexer' : 'Reading the chain directly'}><span className={'dot' + (error ? ' off' : '')} />chain {cfg.chainId}</span> : null}
           <WalletButton />
         </div>

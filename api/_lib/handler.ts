@@ -15,6 +15,7 @@ import { depositAddress } from '../../packages/core/src/deposit.ts';
 import { voteLinks } from '../../packages/core/src/votelink.ts';
 import type { Deployment } from '../../packages/core/src/deployment.ts';
 import { ogSvg, svgToPng } from './og.ts';
+import { loadMedia, type KVLike, type Media } from './media.ts';
 
 export interface Env {
   INDEXER_URL?: string; // preferred: the always-on indexer (live + sybil groups)
@@ -28,6 +29,8 @@ export interface Env {
   deployment?: Deployment;
   /** Edge workers cannot rasterise PNG within the free CPU budget: point twitter:image at the static /og-default.png (og:image stays the live SVG card). */
   staticTwitterImage?: boolean;
+  /** Edge workers: KV for option images + election metadata blobs (see media.ts). */
+  kv?: KVLike;
 }
 
 type Full = Snapshot & { analysis?: Record<number, Analysis> };
@@ -61,11 +64,12 @@ const json = (body: unknown, status = 200, extra: Record<string, string> = {}) =
     headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'cache-control': 'public, max-age=5, s-maxage=10', ...extra },
   });
 
-export function publicElection(s: Full, e: ElectionView, appUrl: string) {
+export function publicElection(s: Full, e: ElectionView, appUrl: string, media?: Media | null) {
   const a = s.analysis?.[e.id] ?? analyzeElection(e);
   const total = a.liveTallies.reduce((x, y) => x + y, 0);
   return {
-    id: e.id, title: e.title, status: e.status, options: e.options.map((name, i) => ({ index: i, letter: String.fromCharCode(65 + i), name, votes: a.liveTallies[i], share: total ? a.liveTallies[i] / total : 0, depositAddress: e.depositAddresses[i] })),
+    id: e.id, title: e.title, status: e.status, options: e.options.map((name, i) => ({ index: i, letter: String.fromCharCode(65 + i), name, votes: a.liveTallies[i], share: total ? a.liveTallies[i] / total : 0, depositAddress: e.depositAddresses[i], image: media?.images?.[i] ? `${appUrl}/img/${media.images[i]}` : null, voteUrl: `${appUrl}/v/${e.id}/${i}` })),
+    details: media?.details ?? null,
     start: e.start, end: e.end, voteCostWei: e.voteCost, wifBurnedWei: e.burned, prizePoolWei: e.prizePool, winners: e.winners,
     winner: e.statusRaw === 2 ? e.winner : null, finalized: e.statusRaw === 2, executed: e.executed, creator: e.creator, tallier: e.tallier,
     voters: { raw: a.rawVoters, counted: a.counted, collapsed: a.collapsed, uniqueFundingSources: a.uniqueSources },
@@ -93,9 +97,9 @@ async function callTool(name: string, args: any, env: Env, origin: string) {
     case 'list_elections': {
       let list = s.elections.slice().reverse();
       if (args?.status) list = list.filter((e) => e.status === args.status);
-      return list.slice(0, Math.min(Number(args?.limit ?? 20), 50)).map((e) => publicElection(s, e, appUrl));
+      return Promise.all(list.slice(0, Math.min(Number(args?.limit ?? 20), 50)).map(async (e) => publicElection(s, e, appUrl, await loadMedia(env.kv, e.metaURI))));
     }
-    case 'get_election': return publicElection(s, need(args.id), appUrl);
+    case 'get_election': { const e = need(args.id); return publicElection(s, e, appUrl, await loadMedia(env.kv, e.metaURI)); }
     case 'get_stats': return statsOf(s);
     case 'vote_link': {
       const e = need(args.id);
@@ -181,10 +185,11 @@ export async function handle(req: Request, env: Env = {}): Promise<Response> {
     if (path.endsWith('/api/stats')) return json(statsOf(s));
     if (path.endsWith('/api/elections')) {
       const st = url.searchParams.get('status');
-      return json(s.elections.slice().reverse().filter((e) => !st || e.status === st).map((e) => publicElection(s, e, appUrl)));
+      const list = s.elections.slice().reverse().filter((e) => !st || e.status === st);
+      return json(await Promise.all(list.map(async (e, i) => publicElection(s, e, appUrl, i < 24 ? await loadMedia(env.kv, e.metaURI) : null))));
     }
     let m = /\/api\/elections\/(\d+)$/.exec(path);
-    if (m) { const e = s.elections.find((x) => x.id === Number(m![1])); return e ? json(publicElection(s, e, appUrl)) : json({ error: 'not found' }, 404); }
+    if (m) { const e = s.elections.find((x) => x.id === Number(m![1])); return e ? json(publicElection(s, e, appUrl, await loadMedia(env.kv, e.metaURI))) : json({ error: 'not found' }, 404); }
     m = /\/api\/og\/(\d+)(?:\.(png|svg))?$/.exec(path);
     if (m) {
       const e = s.elections.find((x) => x.id === Number(m![1]));
@@ -197,20 +202,32 @@ export async function handle(req: Request, env: Env = {}): Promise<Response> {
       }
       return new Response(svg, { headers: { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=30, s-maxage=60', 'access-control-allow-origin': '*' } });
     }
-    m = /\/(?:api\/)?share\/(\d+)$/.exec(path);
+    m = /\/(?:api\/)?share\/(\d+)$/.exec(path) ?? /\/v\/(\d+)\/(\d+)$/.exec(path);
     if (m) {
       const e = s.elections.find((x) => x.id === Number(m![1]));
       if (!e) return new Response('Not found', { status: 404 });
-      const p = publicElection(s, e, appUrl);
+      const opt = m[2] !== undefined ? Number(m[2]) : -1; // /v/<id>/<opt>: one-tap vote link for an option
+      if (opt >= e.options.length) return new Response('Not found', { status: 404 });
+      const media = await loadMedia(env.kv, e.metaURI);
+      const p = publicElection(s, e, appUrl, media);
       const total = p.options.reduce((a, o) => a + o.votes, 0);
       const lead = p.options.slice().sort((a, b) => b.votes - a.votes)[0];
       const esc = (x: string) => x.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-      const desc = total ? `${lead.name} leads with ${Math.round(lead.share * 100)}% · ${total} votes · ${Number(BigInt(e.burned) / 10n ** 18n).toLocaleString('en-US')} $WIF burned. 1 wallet = 1 vote.` : '1 wallet = 1 vote. Every vote burns $WIF. Be the first to vote.';
-      const dest = `${appUrl}/#/e/${e.id}`;
-      const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(e.title)} — Flatland</title>
-<meta property="og:type" content="website"><meta property="og:title" content="${esc(e.title)}"><meta property="og:description" content="${esc(desc)}">
-<meta property="og:image" content="${p.ogImage}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:url" content="${p.share}">
-<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(e.title)}"><meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${env.staticTwitterImage ? appUrl + '/og-default.png' : p.ogImage}">
+      const burnedWif = Number(BigInt(e.burned) / 10n ** 18n).toLocaleString('en-US');
+      const tally = p.options.map((o) => `${o.letter} ${o.name} ${o.votes}`).join(' · ');
+      const head = total ? `${lead.name} leads with ${Math.round(lead.share * 100)}% · ${total} votes · ${burnedWif} $WIF burned.` : '1 wallet = 1 vote. Every vote burns $WIF. Be the first to vote.';
+      const desc = (opt >= 0 ? `Tap to vote ${p.options[opt].letter} — ${p.options[opt].name}. ` : '') + head + ' ' + tally;
+      const dest = opt >= 0 ? `${appUrl}/#/e/${e.id}?vote=${opt}` : `${appUrl}/#/e/${e.id}`;
+      const pageUrl = opt >= 0 ? `${appUrl}/v/${e.id}/${opt}` : p.share;
+      const title = opt >= 0 ? `Vote ${p.options[opt].name} — ${e.title}` : e.title;
+      const pic = (opt >= 0 && p.options[opt].image) || p.options.find((o) => o.image)?.image || null; // degrade to the live SVG / static PNG card when no image
+      const ogImg = pic ?? p.ogImage;
+      const card = pic ? 'summary' : 'summary_large_image';
+      const twImg = pic ?? (env.staticTwitterImage ? appUrl + '/og-default.png' : p.ogImage);
+      const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} — Flatland</title>
+<meta property="og:type" content="website"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
+<meta property="og:image" content="${ogImg}">${pic ? '' : '<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">'}<meta property="og:url" content="${pageUrl}">
+<meta name="twitter:card" content="${card}"><meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${twImg}">
 <meta http-equiv="refresh" content="0; url=${dest}"></head><body><a href="${dest}">Open the election →</a><script>location.replace(${JSON.stringify(dest)})</script></body></html>`;
       return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=30' } });
     }

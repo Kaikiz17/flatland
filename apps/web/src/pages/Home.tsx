@@ -3,6 +3,7 @@ import { useApp } from '../lib/store';
 import { ElectionCard } from '../components/ElectionCard';
 import { CountUp, Empty, Stat } from '../components/ui';
 import { WorldMap } from '../components/WorldMap';
+import { BurnHero } from '../components/BurnHero';
 import { compact, compactWif } from '../lib/format';
 import { formatUnits } from 'viem';
 
@@ -22,6 +23,7 @@ export function Home() {
           <a className="btn ghost" href="#/basket">The People’s Basket 🧺</a>
         </div>
       </section>
+      <BurnHero />
       <div className="horizon" />
       <section className="grid g4" aria-label="Live totals">
         <Stat label="$WIF burned" value={t ? <>🔥 <CountUp value={Number(formatUnits(BigInt(t.wifBurned), 18))} format={(n) => compact(n)} /></> : '—'} sub="every vote, every act, every buyback" />

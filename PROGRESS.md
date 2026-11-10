@@ -44,3 +44,12 @@ Last updated: 2026-11-10 (Lagos, 13:20).
 ## Keyed RPC (Alchemy) – done
 - `RPC_URL` secret on `flatland-tallier` (Alchemy, reads/gas/sends/receipts first). `eth_getLogs` stays on public endpoints (Alchemy free = 10-block cap), via one multi-address request per 1000-block chunk. Optional `LOGS_RPC_URL`.
 - Verified: forced full passes with `error null`, 8 subrequests, no 429s in rpcDiag; idle CPU p50 ≈ 2 ms (was ≈ 48 ms), full-pass p99 ≈ 80 ms.
+
+## Phase 1 (10 Nov 2026, ~16:05 Lagos): burn counter + option images — LIVE
+- Home `BurnHero` (total $WIF burned through Flatland, voters, votes, elections; polls `/api/stats` every 5 s and merges, max-wise, with the browser's own chain read) + `BurnPill` in the header on every page.
+- Optional image per option on Create ("🖼 Add image", file picker, no URLs): client center-crops square, <=512px, WebP (JPEG fallback) <=80 KB, then strips the ICC profile (`apps/web/src/lib/strip.ts`); canvas re-encode already drops EXIF/XMP/GPS/comments.
+- Worker routes (`api/_lib/media.ts`): `POST /api/img` (validates type/size and REJECTS any metadata chunk, stores in KV `img:<sha256>`, deduped), `GET /img/<hash>` (immutable, nosniff, CSP sandbox), `POST /api/meta` -> `meta:<sha256>` JSON `{v:1,images:{"<optionIndex>":"<hash>"},details?}`, `GET /m/<hash>`. The election's on-chain `metaURI` is `<origin>/m/<hash>` (no contract change); the user's Details link rides inside the blob (`details`) and is shown in the room.
+- KV write budget (1,000/day): only NEW objects cost writes (2 each: object + counters). Global cap 150 new objects/UTC day + 12/IP/day (+ per-isolate burst limit of 20/min). Duplicates cost reads only.
+- Rendering with graceful fallback (no image -> nothing): room picture cards, election list/home cards (thumb strip), API (`options[].image`, `details`), share page (`twitter:card=summary` + the option image when images exist; else the existing large card). The rails widget has no options, so it is unchanged.
+- Tests: `api/test/media.test.ts` (validation incl. EXIF/comment/ICC/XMP/oversize/trailing bytes, dedupe, caps, stripper); UI: `node scripts/ui-images.mjs <url> [shots]` against `scripts/demo-local.sh` + `scripts/dev-edge.mts` (creates an election with images through the UI, checks served bytes contain no EXIF/XMP, picture cards, share page, mobile no-overflow).
+- Deployed through the connector (web worker only; tallier untouched). Live test image deleted from KV.

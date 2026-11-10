@@ -5,7 +5,8 @@ import { analysisFor, feedFor, getState, useApp } from '../lib/store';
 import { useWallet } from '../lib/wallet';
 import { useRoute } from '../lib/route';
 import { challenge, claimPrize, finalize, fundPrize, seedDraw, vote, setCountry } from '../lib/actions';
-import { ActionButton, CountUp, Copy, TxStatus, color, letter, useNow, useTx, Empty } from '../components/ui';
+import { ActionButton, CountUp, Copy, OptImg, TxStatus, color, letter, useNow, useTx, Empty } from '../components/ui';
+import { imgUrl, useMedia } from '../lib/media';
 import { DepositPanel } from '../components/DepositPanel';
 import { FairnessCard } from '../components/Fairness';
 import { WorldMap } from '../components/WorldMap';
@@ -49,6 +50,7 @@ function Room({ e }: { e: ElectionView }) {
   const feed = useMemo(() => feedFor(snap!, e, fresh), [snap, e, fresh]);
   const isBasket = e.metaURI === 'flatland:basket';
   const winnerIdx = e.statusRaw === 2 ? e.winner : -1;
+  const media = useMedia(e.metaURI);
 
   // map data: only voters who opted in to share a country
   const { counts, pulses } = useMemo(() => {
@@ -77,7 +79,7 @@ function Room({ e }: { e: ElectionView }) {
         <span className="mono small">{open ? until(e.end, now) : e.status === 'upcoming' ? `starts ${ago(e.start, now)}` : `#${e.id}`}</span>
       </div>
       <h1 style={{ fontSize: 'clamp(1.7rem, 5vw, 2.8rem)' }}>{e.title}</h1>
-      <p className="small muted">by <span className="mono">{short(e.creator)}</span> · {wif(e.voteCost, 2)} $WIF per vote · {e.tallier === ZERO ? 'fully on-chain (no tallier)' : `attested by ${short(e.tallier)}`}{e.executor !== ZERO ? <> · <b>executes on-chain on finalize</b></> : null}</p>
+      <p className="small muted">by <span className="mono">{short(e.creator)}</span> · {wif(e.voteCost, 2)} $WIF per vote · {e.tallier === ZERO ? 'fully on-chain (no tallier)' : `attested by ${short(e.tallier)}`}{e.executor !== ZERO ? <> · <b>executes on-chain on finalize</b></> : null}{media?.details && /^https?:\/\//.test(media.details) ? <> · <a href={media.details} target="_blank" rel="noreferrer noopener">Details ↗</a></> : null}</p>
 
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1.6fr) minmax(0,1fr)', alignItems: 'start' }} data-stack>
         <div className="grid">
@@ -97,6 +99,7 @@ function Room({ e }: { e: ElectionView }) {
                   onClick={() => open && setSel(i)} onKeyDown={(ev) => open && (ev.key === 'Enter' || ev.key === ' ') && setSel(i)} aria-pressed={sel === i}>
                   <div className="bar" style={{ width: `${pct}%` }} />
                   <div className="in">
+                    <OptImg src={imgUrl(media, i)} size={64} alt={name} />
                     <div className="letter">{letter(i)}</div>
                     <div className="name">{name}{winnerIdx === i ? ' 🏆' : ''}{myVote?.option === i ? <span className="tag" style={{ marginLeft: 8 }}>you</span> : null}{sel === i && open ? <span className="tag" style={{ marginLeft: 8, background: 'var(--gold)' }}>selected</span> : null}</div>
                     <div className="n">{n} <span className="muted small">({pct.toFixed(0)}%)</span></div>

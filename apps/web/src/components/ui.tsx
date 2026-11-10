@@ -99,3 +99,10 @@ export function CountUp({ value, format }: { value: number; format: (n: number) 
 }
 
 export const Empty = ({ children }: { children: ReactNode }) => <div className="card flat muted" style={{ textAlign: 'center', padding: 30 }}>{children}</div>;
+
+/** Option picture; renders nothing when there is no image or it fails to load (graceful degrade). */
+export function OptImg({ src, size = 56, alt = '' }: { src: string | null; size?: number; alt?: string }) {
+  const [bad, setBad] = useState(false);
+  if (!src || bad) return null;
+  return <img className="pic" src={src} alt={alt} width={size} height={size} loading="lazy" decoding="async" onError={() => setBad(true)} style={{ width: size, height: size }} />;
+}

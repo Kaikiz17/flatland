@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { parseUnits, type Address } from 'viem';
 import { useApp } from '../lib/store';
 import { ActionButton, TxStatus, useTx, color, letter } from '../components/ui';
 import { createElection } from '../lib/actions';
 import { go } from '../lib/route';
 import { ZERO, isAddr } from '../lib/format';
+import { processImage, uploadImage, uploadMeta } from '../lib/media';
+
+type Img = { blob: Blob; url: string } | null;
 
 const DURATIONS: [string, number][] = [['1 hour', 3600], ['6 hours', 6 * 3600], ['1 day', 86400], ['3 days', 3 * 86400], ['7 days', 7 * 86400], ['30 days', 30 * 86400]];
 
@@ -13,6 +16,15 @@ export function Create() {
   const tx = useTx();
   const [title, setTitle] = useState('');
   const [opts, setOpts] = useState(['', '']);
+  const [imgs, setImgs] = useState<Img[]>([null, null]);
+  const [imgErr, setImgErr] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
+  const pickFor = useRef(0);
+  const onFile = async (f?: File | null) => {
+    if (!f) return;
+    setImgErr('');
+    try { const r = await processImage(f); const i = pickFor.current; setImgs((cur) => cur.map((x, j) => (j === i ? r : x))); } catch (e) { setImgErr((e as Error).message); }
+  };
   const [dur, setDur] = useState(86400);
   const [cost, setCost] = useState('1');
   const [prize, setPrize] = useState('0');
@@ -35,6 +47,7 @@ export function Create() {
   if (prizeWei > 0n && w < 1) problems.push('A prize pool needs at least 1 winner slot.');
   if (w > 100) problems.push('Max 100 winner slots.');
   if (trust === 'custom' && !isAddr(custom)) problems.push('Enter a valid tallier address.');
+  if (meta.trim() && !/^(https?:\/\/|ipfs:\/\/)/i.test(meta.trim())) problems.push('Details link must start with https:// or ipfs://');
   if (executor && !isAddr(executor)) problems.push('Executor must be an address (or empty).');
   const tallier: Address = trust === 'none' ? ZERO : trust === 'custom' ? (custom as Address) : dep!.tallier;
 
@@ -45,14 +58,20 @@ export function Create() {
       <div className="card">
         <div className="field"><label>Question</label><input value={title} maxLength={140} onChange={(e) => setTitle(e.target.value)} placeholder="Which Stock Token should the world buy first?" /></div>
         <div className="field"><label>Options</label>
+          <input ref={fileRef} type="file" accept="image/*" hidden data-testid="img-input" onChange={(ev) => { void onFile(ev.target.files?.[0]); ev.target.value = ''; }} />
           {opts.map((o, i) => (
             <div key={i} className="row" style={{ marginBottom: 8, flexWrap: 'nowrap' }}>
               <span className="chip" style={{ background: color(i), width: 32, height: 32, fontSize: '.95rem' }}>{letter(i)}</span>
               <input value={o} maxLength={60} onChange={(e) => setOpts(opts.map((x, j) => (j === i ? e.target.value : x)))} placeholder={`Option ${letter(i)}`} />
-              {opts.length > 2 ? <button className="btn ghost sm" aria-label="Remove option" onClick={() => setOpts(opts.filter((_, j) => j !== i))}>✕</button> : null}
+              {imgs[i] ? (
+                <span className="thumb-edit"><img src={imgs[i]!.url} alt={`Option ${letter(i)} image`} /><button className="x" aria-label="Remove image" onClick={() => setImgs(imgs.map((x, j) => (j === i ? null : x)))}>✕</button></span>
+              ) : <button className="btn ghost sm" style={{ whiteSpace: 'nowrap' }} onClick={() => { pickFor.current = i; fileRef.current?.click(); }}>🖼 Add image</button>}
+              {opts.length > 2 ? <button className="btn ghost sm" aria-label="Remove option" onClick={() => { setOpts(opts.filter((_, j) => j !== i)); setImgs(imgs.filter((_, j) => j !== i)); }}>✕</button> : null}
             </div>
           ))}
-          {opts.length < 32 ? <button className="btn ghost sm" onClick={() => setOpts([...opts, ''])}>+ Add option</button> : null}
+          {imgErr ? <div className="err">{imgErr}</div> : null}
+          <div className="hint">Images are optional. Pick a photo from your device: it is cropped square, shrunk to 512px / under 80 KB and stripped of all metadata in your browser before upload.</div>
+          {opts.length < 32 ? <button className="btn ghost sm" onClick={() => { setOpts([...opts, '']); setImgs([...imgs, null]); }}>+ Add option</button> : null}
         </div>
         <div className="grid g2">
           <div className="field"><label>Voting stays open for</label>
@@ -82,8 +101,19 @@ export function Create() {
         </details>
         {problems.length ? <ul className="small err" style={{ paddingLeft: 18 }}>{problems.map((p) => <li key={p}>{p}</li>)}</ul> : null}
         <ActionButton className="btn block" tx={tx} disabled={problems.length > 0} onRun={async (s) => {
+          // upload images first (no gas, no wallet): then a small JSON blob maps option index -> image and becomes the on-chain metaURI
+          const map: Record<number, string> = {};
+          let k = 0;
+          for (let i = 0; i < opts.length; i++) {
+            if (!opts[i].trim()) continue;
+            const im = imgs[i];
+            if (im) { s({ label: `Uploading image ${letter(i)}…` }); map[k] = await uploadImage(im.blob); }
+            k++;
+          }
+          let metaURI = meta.trim();
+          if (Object.keys(map).length) { s({ label: 'Saving image map…' }); metaURI = await uploadMeta(map, meta.trim()); }
           const id = await createElection({
-            title: title.trim(), options: cleaned, metaURI: meta, end: Math.floor(Date.now() / 1000) + dur, voteCost: costWei, tallier, executor: (executor || ZERO) as Address,
+            title: title.trim(), options: cleaned, metaURI, end: Math.floor(Date.now() / 1000) + dur, voteCost: costWei, tallier, executor: (executor || ZERO) as Address,
             challengeWindow: cw * 3600, winners: w, prize: prizeWei,
           }, s);
           setTimeout(() => go(`/e/${id}`), 1200);
