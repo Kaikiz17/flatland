@@ -77,5 +77,5 @@ Last updated: 2026-11-10 (Lagos, 13:20).
 ## Rename + share cards + lucky trigger (10 Nov 2026, Lagos)
 - User-facing name changes only: People’s Basket → **Stocks**; Rails → **Sign**. Sign tagline is the exact sentence about petitions/RSVPs/allowlists/access gates. Routes and contract names unchanged (`#/basket`, `#/rails`).
 - New designed “I signed” card + `/share/signed/:id` and `/api/og/signed/:id.svg`. Redesigned “I voted” card (flat-earth motif, voter number, pick, $WIF burned) for in-app and OG (`/share/voted/:id/:opt/:voterNo?`).
-- Tallier `payLucky` auto-trigger is in the indexer + `flatland-tallier`, gated on `PRIZE_RULES` / `prizeRules`. Unset = no-op (current live deploy). LuckyHit pop-up in the election room. Create page prizes panel is a checkbox (also `#/create?prizes=1`). PrizeRules still NOT deployed.
+- Tallier `payLucky` auto-trigger is in the indexer + `flatland-tallier`, gated on `PRIZE_RULES` / `prizeRules`. Unset = no-op (current live deploy). LuckyHit pop-up in the election room. Create page prizes panel is a checkbox (also `#/create?prizes=1`). PrizeRules deployed at 0x0687847DdD19B924a1304347F02D2ed25CF6E159 (tx 0x1cdc…240d, 0.00003969 ETH).
 - Live: https://flatland.flatland.workers.dev (web + tallier redeployed). Screens: docs/screens/25, 25b, 26, 27, 28.

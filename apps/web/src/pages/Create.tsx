@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import { parseUnits, type Address } from 'viem';
 import { useApp } from '../lib/store';
+import { isPrizeRulesConfigured } from '@flatland/core';
 import { ActionButton, TxStatus, useTx, color, letter } from '../components/ui';
-import { createElection } from '../lib/actions';
+import { createElection, fundPrizeRules } from '../lib/actions';
 import { go, useRoute } from '../lib/route';
 import { TEMPLATES } from '../lib/templates';
-import { PrizePanel } from '../components/PrizePanel';
+import { PrizePanel, buildDraft } from '../components/PrizePanel';
 import { BasketTemplate } from '../components/BasketTemplate';
 import { ZERO, isAddr } from '../lib/format';
 import { processImage, uploadImage, uploadMeta } from '../lib/media';
@@ -23,7 +24,7 @@ export function Create() {
 
 function CreateForm({ tpl }: { tpl?: (typeof TEMPLATES)[keyof typeof TEMPLATES] }) {
   const { query } = useRoute();
-  const { dep } = useApp();
+  const { cfg, dep } = useApp();
   const tx = useTx();
   const [title, setTitle] = useState<string>(tpl?.title ?? '');
   const [opts, setOpts] = useState<string[]>(tpl ? [...tpl.options] : ['', '']);
@@ -46,6 +47,11 @@ function CreateForm({ tpl }: { tpl?: (typeof TEMPLATES)[keyof typeof TEMPLATES] 
   const [meta, setMeta] = useState(tpl && 'details' in tpl && tpl.details ? tpl.details : '');
   const [executor, setExecutor] = useState('');
   const [showPrizes, setShowPrizes] = useState(query.get('prizes') === '1');
+  const [pFirst, setPFirst] = useState('');
+  const [pLast, setPLast] = useState('');
+  const [pPool, setPPool] = useState('');
+  const [pSlots, setPSlots] = useState('');
+  const [pLucky, setPLucky] = useState<{ pos: string; amt: string }[]>([]);
 
   const cleaned = opts.map((o) => o.trim()).filter(Boolean);
   let costWei = 0n, prizeWei = 0n;
@@ -61,6 +67,9 @@ function CreateForm({ tpl }: { tpl?: (typeof TEMPLATES)[keyof typeof TEMPLATES] 
   if (trust === 'custom' && !isAddr(custom)) problems.push('Enter a valid tallier address.');
   if (meta.trim() && !/^(https?:\/\/|ipfs:\/\/)/i.test(meta.trim())) problems.push('Details link must start with https:// or ipfs://');
   if (executor && !isAddr(executor)) problems.push('Executor must be an address (or empty).');
+  const prizeDraft = buildDraft(pFirst, pLast, pPool, pSlots, pLucky);
+  const prizeConfigured = isPrizeRulesConfigured((cfg?.prizeRules || (dep as { prizeRules?: string } | null)?.prizeRules) as string | undefined);
+  if (showPrizes && (pFirst || pLast || pPool || pSlots || pLucky.length) && !prizeDraft.ok) problems.push(prizeDraft.error || 'Finish or clear the prize fields.');
   const tallier: Address = trust === 'none' ? ZERO : trust === 'custom' ? (custom as Address) : dep!.tallier;
 
   return (
@@ -119,7 +128,13 @@ function CreateForm({ tpl }: { tpl?: (typeof TEMPLATES)[keyof typeof TEMPLATES] 
           </label>
           <div className="hint">Set before the election goes live. Lucky voter numbers are locked on-chain and pay out the moment that voter arrives.</div>
         </div>
-        {showPrizes ? <PrizePanel /> : null}
+        {showPrizes ? <PrizePanel first={pFirst} last={pLast} pool={pPool} slots={pSlots} lucky={pLucky} onChange={(n) => {
+          if (n.first !== undefined) setPFirst(n.first);
+          if (n.last !== undefined) setPLast(n.last);
+          if (n.pool !== undefined) setPPool(n.pool);
+          if (n.slots !== undefined) setPSlots(n.slots);
+          if (n.lucky !== undefined) setPLucky(n.lucky);
+        }} /> : null}
         {problems.length ? <ul className="small err" style={{ paddingLeft: 18 }}>{problems.map((p) => <li key={p}>{p}</li>)}</ul> : null}
         <ActionButton className="btn block" tx={tx} disabled={problems.length > 0} onRun={async (s) => {
           // upload images first (no gas, no wallet): then a small JSON blob maps option index -> image and becomes the on-chain metaURI
@@ -137,6 +152,9 @@ function CreateForm({ tpl }: { tpl?: (typeof TEMPLATES)[keyof typeof TEMPLATES] 
             title: title.trim(), options: cleaned, metaURI, end: Math.floor(Date.now() / 1000) + dur, voteCost: costWei, tallier, executor: (executor || ZERO) as Address,
             challengeWindow: cw * 3600, winners: w, prize: prizeWei,
           }, s);
+          if (showPrizes && prizeConfigured && prizeDraft.ok) {
+            await fundPrizeRules(id, prizeDraft, s);
+          }
           setTimeout(() => go(`/e/${id}`), 1200);
         }}>Create election{prizeWei > 0n ? ' & fund prize' : ''}</ActionButton>
         <TxStatus tx={tx} />

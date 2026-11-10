@@ -1,5 +1,5 @@
 import { maxUint256, type Address, type Hex } from 'viem';
-import { erc20Abi, flatlandAbi, wifGateAbi, basketVaultAbi, standingAbi, ONE_WIF, type Deployment } from '@flatland/core';
+import { erc20Abi, flatlandAbi, wifGateAbi, basketVaultAbi, standingAbi, ONE_WIF, isPrizeRulesConfigured, prizeRulesAbi, type Deployment } from '@flatland/core';
 import { getState } from './store';
 import { ensureChain, walletClient, getWallet } from './wallet';
 
@@ -73,6 +73,36 @@ export async function fundPrize(id: number, amount: bigint, onStep?: (s: TxStep)
   await ensureAllowance(dep.flatland, amount, dep.wif, onStep);
   return write({ address: dep.flatland, abi: flatlandAbi, functionName: 'fundPrize', args: [BigInt(id), amount] }, onStep);
 }
+
+export interface PrizeRulesInput {
+  first: bigint;
+  last: bigint;
+  randomPool: bigint;
+  randomSlots: number;
+  luckyPositions: bigint[];
+  luckyAmounts: bigint[];
+  total: bigint;
+}
+
+/** Fund PrizeRules after the election exists. Only the election creator, only while open. Multiple lucky spots allowed. */
+export async function fundPrizeRules(id: number, a: PrizeRulesInput, onStep?: (s: TxStep) => void) {
+  const { dep, cfg, addr } = ctx();
+  const prizes = ((cfg as { prizeRules?: string }).prizeRules || (dep as { prizeRules?: string }).prizeRules) as `0x${string}` | undefined;
+  if (!isPrizeRulesConfigured(prizes)) throw new Error('Prize contract is not configured');
+  const total = a.total > 0n ? a.total : a.first + a.last + a.randomPool + a.luckyAmounts.reduce((s, x) => s + x, 0n);
+  if (total <= 0n) throw new Error('Add at least one prize amount');
+  const bal = await wifBalance(addr);
+  if (bal < total) throw new Error(`You need ${Number(total) / 1e18} $WIF to fund prizes — you have ${Number(bal) / 1e18}.`);
+  await ensureAllowance(prizes, total, dep.wif, onStep);
+  return write({
+    address: prizes,
+    abi: prizeRulesAbi,
+    functionName: 'create',
+    args: [BigInt(id), a.first, a.last, a.luckyPositions, a.luckyAmounts, a.randomPool, a.randomSlots],
+  }, onStep, 'Confirm: fund first / last / lucky prizes…');
+}
+
+
 export const finalize = (id: number, onStep?: (s: TxStep) => void) => write({ address: ctx().dep.flatland, abi: flatlandAbi, functionName: 'finalize', args: [BigInt(id)] }, onStep);
 export const seedDraw = (id: number, onStep?: (s: TxStep) => void) => write({ address: ctx().dep.flatland, abi: flatlandAbi, functionName: 'seedDraw', args: [BigInt(id)] }, onStep);
 export const sweep = (id: number, option: number, onStep?: (s: TxStep) => void) => write({ address: ctx().dep.flatland, abi: flatlandAbi, functionName: 'sweepDeposits', args: [BigInt(id), option] }, onStep);

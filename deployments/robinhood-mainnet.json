@@ -14,6 +14,7 @@
   "tallier": "0xAa30Ec61cF4Ded4Dc51a55Ce5Cd074E6E4b549c1",
   "usdg": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
   "wif": "0x5173b8eA6923c2d40267890D45C46a3480954773",
+  "prizeRules": "0x0687847DdD19B924a1304347F02D2ed25CF6E159",
   "deployer": "0x2898121645aA02ff7151a5E42E71f7C8554ce64C",
   "governance": "0x2898121645aA02ff7151a5E42E71f7C8554ce64C",
   "swapper": "0xd53Fb1dEE195beba25dae1937e28d65252230DcD",
@@ -30,6 +31,7 @@
     "FlatPaymaster": "0x4cef28ec6ce88dce1eb48d2713c9e7e59e243138e3719ce947b0119dcf87099a",
     "StandingLockWriters": "0x0f5307e507d199537288777c8e454392ad2c5861a7ceaedb950033c667e511b4",
     "WifSwapper": "0xc088b78e74ac63b5fad443e81c5c78cce30880ff2d62f04e800db92bac700194",
-    "SwapEthForWif": "0x74424b4dba9ba705a12efaae5565bdcf047e7a6c945c94cc75f0ab7933185a72"
+    "SwapEthForWif": "0x74424b4dba9ba705a12efaae5565bdcf047e7a6c945c94cc75f0ab7933185a72",
+    "PrizeRules": "0x1cdc4725f2b9e8bc41212b01eed00a522310ac4e6f47d7d92a77dfd0e294240d"
   }
 }

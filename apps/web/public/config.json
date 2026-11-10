@@ -8,5 +8,6 @@
   "pollMs": 6000,
   "auditUrl": ".",
   "appUrl": "https://flatland.flatland.workers.dev",
-  "goatElectionId": 0
+  "goatElectionId": 0,
+  "prizeRules": "0x0687847DdD19B924a1304347F02D2ed25CF6E159"
 }

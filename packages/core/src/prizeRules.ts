@@ -1,7 +1,20 @@
 import type { Address } from 'viem';
 
-/** Minimal ABI for the PrizeRules add-on (not in the generated hub ABIs; contract may be undeployed). */
+/** Minimal ABI for the PrizeRules add-on. */
 export const prizeRulesAbi = [
+  {
+    type: 'function', name: 'create', stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'id', type: 'uint256' },
+      { name: 'firstPrize', type: 'uint128' },
+      { name: 'lastPrize', type: 'uint128' },
+      { name: 'luckyPositions', type: 'uint256[]' },
+      { name: 'luckyAmounts', type: 'uint128[]' },
+      { name: 'randomPool', type: 'uint128' },
+      { name: 'randomSlots', type: 'uint32' },
+    ],
+    outputs: [],
+  },
   {
     type: 'function', name: 'getLucky', stateMutability: 'view',
     inputs: [{ name: 'id', type: 'uint256' }],

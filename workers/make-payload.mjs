@@ -27,12 +27,17 @@ if (which === 'web') {
 } else if (which === 'tallier') {
   const dir = join(root, 'workers/dist/tallier');
   const modules = Object.fromEntries(readdirSync(dir).filter((f) => f.endsWith('.js')).map((f) => [f, readFileSync(join(dir, f), 'utf8')]));
+  const dep = JSON.parse(readFileSync(join(root, 'deployments/robinhood-mainnet.json'), 'utf8'));
+  const bindings = [
+    { type: 'kv_namespace', name: 'KV', namespace_id: kvId },
+    { type: 'plain_text', name: 'APP_URL', text: extra },
+  ];
+  if (dep.prizeRules && /^0x[0-9a-fA-F]{40}$/.test(dep.prizeRules) && !/^0x0{40}$/i.test(dep.prizeRules)) {
+    bindings.push({ type: 'plain_text', name: 'PRIZE_RULES', text: dep.prizeRules });
+  }
   const metadata = {
     main_module: 'index.js', ...compat, observability: { enabled: true }, keep_bindings: ['secret_text'],
-    bindings: [
-      { type: 'kv_namespace', name: 'KV', namespace_id: kvId },
-      { type: 'plain_text', name: 'APP_URL', text: extra },
-    ],
+    bindings,
   };
   console.log(`async () => {
   const metadata = ${JSON.stringify(metadata)};

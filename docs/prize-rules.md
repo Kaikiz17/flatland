@@ -1,4 +1,4 @@
-# PrizeRules add-on (code + tests only, NOT deployed)
+# PrizeRules add-on (deployed on Robinhood Chain)
 
 Contract: `contracts/src/PrizeRules.sol`. Tests: `contracts/test/PrizeRules.t.sol` (10 tests incl. a 512-run fuzz, all pass: `cd contracts && forge test --match-contract PrizeRulesTest`).
 No hub change. Pays in $WIF (the hub's token).
@@ -24,19 +24,20 @@ The hub has no vote hook, so a payout in the very same transaction as the Nth vo
 Lucky positions and amounts are stored on-chain and readable with `getLucky(id)`. The UI never lists them; it only shows "lucky voter prizes: N hidden spots". Anyone reading the chain can see them.
 
 ## UI
-The create page has a checkbox, “Add first, last, lucky and random prizes” (also opens with `#/create?prizes=1`). Inputs + total to fund. Funding stays disabled until the contract is deployed and its address is configured. After a vote, the election room reads the `LuckyHit` event and shows “You hit lucky voter #N!”.
+The create page has a checkbox, “Add first, last, lucky and random prizes” (also opens with `#/create?prizes=1`). Inputs + total to fund. Lucky spots are an add/remove list (max 20), each with its own voter number and amount. After a vote, the election room reads the `LuckyHit` event and shows “You hit lucky voter #N!”.
 
 ## Tallier `payLucky` auto-trigger
 The tallier (`packages/indexer` + `flatland-tallier` worker) calls permissionless `payLucky(id, slot)` as soon as `hub.voterCount` reaches that lucky number. It is gated on a `PRIZE_RULES` address (`ServiceConfig.prizeRules`, Worker env `PRIZE_RULES`, or `prizeRules` in the deployment JSON). While that address is unset or zero, the duty is a no-op (no extra RPC, no transactions).
 
-## How to switch on lucky payouts after deploy (NOT done; needs the owner’s go)
-1. Deploy `PrizeRules` with the hub address (≈1.97M gas, about 0.00006 ETH / $0.13). Do not do this until the owner says go.
-2. Put the new address in `deployments/robinhood-mainnet.json` as `prizeRules`, and in `apps/web/public/config.json` as `prizeRules` (so the UI can read `LuckyHit` and enable funding).
-3. Set the `PRIZE_RULES` binding on Worker `flatland-tallier` (plain text or secret): `PUT /accounts/<id>/workers/scripts/flatland-tallier/secrets` (or a `plain_text` binding) `{name:"PRIZE_RULES", type:"plain_text", text:"0x…"}`.
-4. Redeploy the `flatland` web worker and `flatland-tallier` (keep_bindings preserves `TALLIER_KEY` and `RPC_URL`). After that, creators can fund prizes from the create panel; the tallier pays lucky spots within about a minute of voter #N, and the voter sees the pop-up.
+## Deployed on Robinhood Chain (4663)
+- Address: [`0x0687847DdD19B924a1304347F02D2ed25CF6E159`](https://robinhoodchain.blockscout.com/address/0x0687847DdD19B924a1304347F02D2ed25CF6E159)
+- Deploy tx: [`0x1cdc4725f2b9e8bc41212b01eed00a522310ac4e6f47d7d92a77dfd0e294240d`](https://robinhoodchain.blockscout.com/tx/0x1cdc4725f2b9e8bc41212b01eed00a522310ac4e6f47d7d92a77dfd0e294240d)
+- Constructor arg: Flatland hub `0x365c58F9B820990a1c1C1F2f77404ec57207b1C6`. `hub()` and `WIF()` read back correctly. Runtime codesize 8,681 bytes.
+- Gas used: 1,957,540. Actual cost: 0.00003969 ETH (about $0.08 at $2,100/ETH). Only this deploy tx was sent; no prize pot was funded.
+- Address is in `deployments/robinhood-mainnet.json` and `apps/web/public/config.json` as `prizeRules`. `PRIZE_RULES` is a `plain_text` binding on `flatland-tallier`.
+- Creators fund from the create page (checkbox or `#/create?prizes=1`): add/remove as many lucky rows as they like (max 20), each with its own voter number and $WIF amount. Publishing the election is followed by a second wallet signature to fund.
 
-## Deploy cost on 4663 (NOT deployed, nothing spent)
+## Previous estimate (for the record)
 - Creation bytecode: 9,073 bytes (incl. constructor arg).
 - `eth_estimateGas` on the real RPC: 1,974,241 gas.
-- Gas price 0.02036 gwei, plus about 0.00002 ETH L1 data fee: about 0.00006 ETH, roughly $0.13 at $2,101/ETH.
-- Per-call gas (create, payLucky, claim) was not separately measured; the test suite's whole-flow runs cost about 0.7-3.3M gas including election setup and votes.
+- Gas price ~0.02025 gwei; conservative script estimate was 0.000104 ETH at 2× max fee. Actual L2 + L1 spend was 0.00003969 ETH.

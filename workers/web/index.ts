@@ -59,7 +59,8 @@ export default {
     // tallier / cron status (never contains secrets)
     if (p === '/api/status' || p === '/health') {
       const [st, status] = await Promise.all([state(env), env.KV.get('status', { type: 'json', cacheTtl: 30 })]);
-      return new Response(JSON.stringify({ ok: !!st && Date.now() - (st.lastBeat ?? 0) < STALE_MS, state: st, status }), { headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...cors } });
+      const prizeRules = (deployment as { prizeRules?: string }).prizeRules ?? null;
+      return new Response(JSON.stringify({ ok: !!st && Date.now() - (st.lastBeat ?? 0) < STALE_MS, state: st, status, prizeRules }), { headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...cors } });
     }
 
     // option images + election metadata blobs (KV, immutable, content-addressed)
