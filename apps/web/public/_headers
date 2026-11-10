@@ -1,0 +1,7 @@
+/flatland-widget.js
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=300
+/config.json
+  Access-Control-Allow-Origin: *
+/deployment.json
+  Access-Control-Allow-Origin: *

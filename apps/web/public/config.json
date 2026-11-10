@@ -1,0 +1,9 @@
+{
+  "chainId": 4663,
+  "rpc": "https://rpc.mainnet.chain.robinhood.com",
+  "indexerUrl": "",
+  "deploymentUrl": "./deployment.json",
+  "explorer": "https://robinhoodchain.blockscout.com",
+  "dexUrl": "https://worldisflat.fun",
+  "pollMs": 6000
+}

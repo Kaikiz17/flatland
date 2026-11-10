@@ -1,0 +1,9 @@
+{
+  "name": "@flatland/bot",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Telegram + X vote bot: turns 'vote B' into a ready-to-send 1 $WIF transfer link. Code and link generator only; you run it with your own tokens.",
+  "scripts": { "simulate": "tsx src/main.ts simulate", "telegram": "tsx src/main.ts telegram", "test": "vitest run", "typecheck": "tsc --noEmit" },
+  "dependencies": { "@flatland/core": "*", "viem": "^2.21.0", "tsx": "^4.19.0" },
+  "devDependencies": { "typescript": "^5.6.0", "vitest": "^2.1.0", "@types/node": "^22.0.0" }
+}

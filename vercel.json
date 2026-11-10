@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "npm install",
+  "buildCommand": "npm run build:web",
+  "outputDirectory": "apps/web/dist",
+  "rewrites": [{ "source": "/share/:id", "destination": "/api/share/:id" }],
+  "functions": { "api/[...path].ts": { "includeFiles": "api/assets/**", "maxDuration": 30 } },
+  "headers": [
+    { "source": "/flatland-widget.js", "headers": [{ "key": "Access-Control-Allow-Origin", "value": "*" }, { "key": "Cache-Control", "value": "public, max-age=300" }] },
+    { "source": "/(config|deployment).json", "headers": [{ "key": "Access-Control-Allow-Origin", "value": "*" }, { "key": "Cache-Control", "value": "public, max-age=30" }] }
+  ]
+}

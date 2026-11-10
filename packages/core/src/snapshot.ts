@@ -272,7 +272,8 @@ export async function readSnapshot(client: PublicClient, dep: Deployment, opts: 
   for (const l of standLogs) {
     if (l.eventName !== 'CountrySet') continue;
     const a = l.args as any;
-    const cc = Buffer.from((a.country as string).slice(2), 'hex').toString('ascii');
+    const hx = (a.country as string).slice(2);
+    const cc = String.fromCharCode(parseInt(hx.slice(0, 2), 16) || 0, parseInt(hx.slice(2, 4), 16) || 0);
     if (cc && cc !== '\0\0' && /^[A-Z]{2}$/.test(cc)) voterCountry[(a.who as string).toLowerCase()] = cc;
     else delete voterCountry[(a.who as string).toLowerCase()];
   }
