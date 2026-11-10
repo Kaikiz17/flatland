@@ -11,6 +11,9 @@ describe('telegram brain', () => {
   it('/start and /elections', async () => {
     const [s] = await telegramCalls(msg('/start'), [E], 'https://f.test');
     expect(s.method).toBe('sendMessage'); expect(String(s.body.text)).toContain('/vote');
+    expect(String(s.body.text)).toContain('Stocks'); expect(String(s.body.text)).toContain('Sign');
+    const startBtns = (s.body as any).reply_markup.inline_keyboard.flat().map((b: any) => b.url);
+    expect(startBtns).toEqual(expect.arrayContaining(['https://f.test', 'https://f.test/#/basket', 'https://f.test/#/rails']));
     const [l] = await telegramCalls(msg('/elections@FlatBot'), [E], 'https://f.test');
     expect(String(l.body.text)).toContain('#3 Which logo wins?');
     expect((l.body as any).reply_markup.inline_keyboard[0][0].url).toBe('https://f.test/share/3');

@@ -51,7 +51,7 @@ export async function telegramCalls(update: any, elections: TgElection[], appUrl
   const args = (m?.[2] ?? '').trim();
 
   if (cmd === 'start' || cmd === 'help') {
-    return send(`🌍 Flatland — 1 wallet = 1 vote, every vote burns $WIF.\n\n/elections — what is open now\n/vote <id> <option> — get a one-tap vote link + the 1 $WIF deposit address\n/results <id> — live tally\nInline: type the bot's @name in any chat to share an election.\n\n${HELP}`, [[{ text: 'Open Flatland', url: appUrl }]]);
+    return send(`🌍 Flatland — 1 wallet = 1 vote, every vote burns $WIF.\n\n/elections — what is open now\n/vote <id> <option> — get a one-tap vote link + the 1 $WIF deposit address\n/results <id> — live tally\nInline: type the bot's @name in any chat to share an election.\n\nAlso on Flatland: Stocks — the community stock pot — and Sign — petitions, RSVPs, allowlists and access. Each act burns $WIF. After you vote or sign, grab your I voted / I signed card from the page.\n\n${HELP}`, [[{ text: 'Open Flatland', url: appUrl }], [{ text: 'Stocks', url: `${appUrl}/#/basket` }, { text: 'Sign', url: `${appUrl}/#/rails` }]]);
   }
   if (cmd === 'elections' || cmd === 'live') {
     if (!open.length) return send('No open elections right now.', [[{ text: 'Start one', url: `${appUrl}/#/create` }]]);
