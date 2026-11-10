@@ -43,7 +43,7 @@ function serveStatic(req: Request, p: string): Response {
 }
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
     const p = url.pathname.replace(/\/+$/, '') || '/';
 
@@ -80,13 +80,15 @@ export default {
         RPC_URL: env.RPC_URL ?? 'https://4663.rpc.thirdweb.com',
         deployment: deployment as any,
         staticTwitterImage: true,
-        getSnapshot: async () => {
+        getSnapshot: async (opts) => {
           const [snap, st] = await Promise.all([env.KV.get('snapshot', { type: 'json', cacheTtl: 30 }) as Promise<any>, state(env)]);
-          if (!snap || !st || Date.now() - (st.lastFull ?? 0) > STALE_MS) return null;
-          snap.generatedAt = Math.floor((st.lastFull ?? Date.now()) / 1000);
+          if (!snap) return null;
+          const stale = !st || Date.now() - (st.lastFull ?? 0) > STALE_MS;
+          if (stale && !opts?.allowStale) return null;
+          snap.generatedAt = Math.floor((st?.lastFull ?? Date.now()) / 1000);
           return snap;
         },
-      });
+      }, ctx);
     }
     return serveStatic(req, p);
   },

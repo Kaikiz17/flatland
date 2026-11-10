@@ -82,4 +82,14 @@ describe('webhook route with a token (Telegram API mocked)', () => {
     const res = await post(msg('/start'));
     expect(JSON.stringify(await res.json())).not.toContain('TESTTOKEN');
   });
+
+  it('/start replies even when the snapshot cannot be loaded', async () => {
+    const sent: any[] = [];
+    vi.stubGlobal('fetch', async (u: string, init: any) => { sent.push({ u, body: JSON.parse(init.body) }); return new Response('{"ok":true}'); });
+    const env = { APP_URL: 'https://f.test', TELEGRAM_BOT_TOKEN: 'TESTTOKEN', getSnapshot: async () => { throw new Error('no snapshot'); } };
+    const r: any = await (await handle(new Request('https://f.test/api/telegram', { method: 'POST', body: JSON.stringify(msg('/start')) }), env)).json();
+    expect(r.ok).toBe(true);
+    expect(sent[0].body.text).toContain('Stocks');
+    expect(sent[0].body.text).toContain('Sign');
+  });
 });

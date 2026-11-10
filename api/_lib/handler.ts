@@ -28,7 +28,7 @@ export interface Env {
   DEPLOYMENT_URL?: string; // defaults to `${APP_URL}/deployment.json`
   FONT_FILES?: string; // comma list for the PNG rasteriser (Node only)
   /** Edge workers: a pre-computed snapshot (e.g. from KV, written by the cron tallier). Return null to fall back to RPC. */
-  getSnapshot?: () => Promise<any | null>;
+  getSnapshot?: (opts?: { allowStale?: boolean; noRpc?: boolean }) => Promise<any | null>;
   /** Edge workers: bundled deployment record, so the RPC fallback needs no extra fetch. */
   deployment?: Deployment;
   /** Edge workers cannot rasterise PNG within the free CPU budget: point twitter:image at the static /og-default.png (og:image stays the live SVG card). */
@@ -46,13 +46,14 @@ type Full = Snapshot & { analysis?: Record<number, Analysis> };
 const cache = new Map<string, { at: number; v: Full }>();
 const TTL = 10_000;
 
-export async function loadSnapshot(env: Env, origin: string): Promise<Full> {
+export async function loadSnapshot(env: Env, origin: string, opts?: { allowStale?: boolean; noRpc?: boolean }): Promise<Full> {
   const key = env.INDEXER_URL ?? env.RPC_URL ?? 'direct';
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL) return hit.v;
   let v: Full | undefined;
-  const pre = env.getSnapshot ? await env.getSnapshot() : null;
+  const pre = env.getSnapshot ? await env.getSnapshot(opts) : null;
   if (pre) v = pre;
+  else if (opts?.noRpc) throw new Error('no snapshot');
   else if (env.INDEXER_URL) {
     const r = await fetch(env.INDEXER_URL.replace(/\/$/, '') + '/snapshot.json');
     if (!r.ok) throw new Error('indexer ' + r.status);
@@ -182,29 +183,58 @@ async function mcp(req: Request, env: Env, origin: string): Promise<Response> {
 }
 
 // ───────────────────────────── Telegram webhook ─────────────────────────────
-async function telegram(req: Request, env: Env, origin: string, appUrl: string): Promise<Response> {
+async function telegram(req: Request, env: Env, origin: string, appUrl: string, waitUntil?: (p: Promise<unknown>) => void): Promise<Response> {
   if (req.method === 'GET') return json({ bot: 'flatland', configured: !!env.TELEGRAM_BOT_TOKEN, webhook: `${appUrl}/api/telegram`, commands: ['/start', '/elections', '/vote <id> <option>', '/results <id>', 'inline: @bot [id]'] }, 200, { 'cache-control': 'no-store' });
   if (req.method !== 'POST') return json({ error: 'method not allowed' }, 405);
   if (!env.TELEGRAM_BOT_TOKEN) return json({ ok: false, error: 'Telegram bot is not configured (TELEGRAM_BOT_TOKEN secret not set)' }, 503, { 'cache-control': 'no-store' });
-  if (env.TELEGRAM_WEBHOOK_SECRET && req.headers.get('x-telegram-bot-api-secret-token') !== env.TELEGRAM_WEBHOOK_SECRET) return json({ error: 'forbidden' }, 403);
+  const got = (req.headers.get('x-telegram-bot-api-secret-token') ?? req.headers.get('X-Telegram-Bot-Api-Secret-Token') ?? '').trim();
+  const want = (env.TELEGRAM_WEBHOOK_SECRET ?? '').trim();
+  if (want && got !== want) return json({ error: 'forbidden' }, 403);
   let update: any;
   try { update = await req.json(); } catch { return json({ error: 'bad json' }, 400); }
-  const s = await loadSnapshot(env, origin);
-  const elections = await Promise.all(s.elections.map(async (e) => {
-    const p = publicElection(s, e, appUrl, await loadMedia(env.kv, e.metaURI));
-    return { id: e.id, title: e.title, status: e.status, voteCostWei: e.voteCost, url: p.url, share: p.share, end: e.end, burnedWif: Number(BigInt(e.burned) / 10n ** 16n) / 100, options: p.options.map((o) => ({ index: o.index, letter: o.letter, name: o.name, votes: o.votes, share: o.share, depositAddress: o.depositAddress, voteUrl: o.voteUrl })) };
-  }));
-  const calls = await telegramCalls(update, elections, appUrl);
-  for (const c of calls) {
-    // the token only ever goes in the URL of this one HTTPS call to Telegram; it is never logged or returned
-    const r = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${c.method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(c.body) });
-    if (!r.ok) return json({ ok: false, error: `telegram ${c.method} failed (${r.status})` }, 200, { 'cache-control': 'no-store' }); // 200: never make Telegram retry-storm us
+
+  const deliver = async () => {
+    const text = String((update.message ?? update.edited_message)?.text ?? '').trim();
+    const cmd = /^\/(\w+)(?:@\w+)?(?:\s|$)/.exec(text)?.[1]?.toLowerCase();
+    // /start and /help never wait on chain/KV; other commands use a stale snapshot and never fall back to a slow RPC read.
+    let elections: any[] = [];
+    if (cmd !== 'start' && cmd !== 'help') {
+      try {
+        const s = await loadSnapshot(env, origin, { allowStale: true, noRpc: true });
+        elections = (s.elections ?? []).map((e) => {
+          const p = publicElection(s, e, appUrl);
+          return { id: e.id, title: e.title, status: e.status, voteCostWei: e.voteCost, url: p.url, share: p.share, end: e.end, burnedWif: Number(BigInt(e.burned) / 10n ** 16n) / 100, options: p.options.map((o) => ({ index: o.index, letter: o.letter, name: o.name, votes: o.votes, share: o.share, depositAddress: o.depositAddress, voteUrl: o.voteUrl })) };
+        });
+      } catch { elections = []; }
+    }
+    const calls = await telegramCalls(update, elections, appUrl);
+    for (const c of calls) {
+      // the token only ever goes in the URL of this one HTTPS call to Telegram; it is never logged or returned
+      const send = (body: Record<string, unknown>) => fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${c.method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const r = await send(c.body);
+      if (!r.ok && c.method === 'sendMessage' && 'reply_to_message_id' in c.body) {
+        const { reply_to_message_id: _ignored, ...rest } = c.body as any;
+        await send(rest);
+      }
+    }
+    return calls.map((c) => c.method);
+  };
+
+  const work = deliver();
+  if (waitUntil) {
+    waitUntil(work.then(() => undefined, () => undefined));
+    return json({ ok: true, queued: true }, 200, { 'cache-control': 'no-store' });
   }
-  return json({ ok: true, calls: calls.map((c) => c.method) }, 200, { 'cache-control': 'no-store' });
+  try {
+    const methods = await work;
+    return json({ ok: true, calls: methods }, 200, { 'cache-control': 'no-store' });
+  } catch {
+    return json({ ok: true, calls: [] }, 200, { 'cache-control': 'no-store' });
+  }
 }
 
 // ───────────────────────────── router ─────────────────────────────
-export async function handle(req: Request, env: Env = {}): Promise<Response> {
+export async function handle(req: Request, env: Env = {}, ctx?: { waitUntil?: (p: Promise<unknown>) => void }): Promise<Response> {
   const url = new URL(req.url);
   const origin = url.origin;
   const appUrl = (env.APP_URL ?? origin).replace(/\/$/, '');
@@ -212,7 +242,7 @@ export async function handle(req: Request, env: Env = {}): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS' } });
   try {
     if (path.endsWith('/api/mcp')) return await mcp(req, env, origin);
-    if (path.endsWith('/api/telegram')) return await telegram(req, env, origin, appUrl);
+    if (path.endsWith('/api/telegram')) return await telegram(req, env, origin, appUrl, ctx?.waitUntil?.bind(ctx));
     const s = await loadSnapshot(env, origin);
     if (path.endsWith('/api/stats')) return json(statsOf(s));
     if (path.endsWith('/api/elections')) {
