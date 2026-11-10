@@ -50,7 +50,7 @@ export const TEMPLATES = {
     prize: '0',
     winners: '0',
     heading: 'Start the GOAT rematch',
-    blurb: '32 candidates from World is Fair’s public GOAT results, 7 days, 1 $WIF per vote. Edit anything, add pictures, then create. A prize pool for a random voter draw is optional (prize fields below).',
+    blurb: 'Run your own GOAT rematch: 32 candidates from World is Fair’s public GOAT results, 7 days, 1 $WIF per vote. Edit anything, add pictures, then create. A prize pool for a random voter draw is optional (prize fields below).',
   },
   'peoples-pick': {
     title: "People's Pick — who should win the World is Flat hackathon?",

@@ -15,7 +15,7 @@ export function Home() {
   return (
     <>
       <section className="hero">
-        <div className="kicker">Open protocol · built on the World is Fair rules, open to everyone</div>
+        <div className="kicker">Fair runs WIF’s official votes · Flatland lets anyone run their own</div>
         <h1>The world is flat.<br /><em>So is every vote.</em></h1>
         <p className="lead">One wallet, one vote — and every vote <b>burns real $WIF</b>. Run an election, bind it to an on-chain outcome, or plug “send 1 $WIF to act” into any app. Nobody’s vote weighs more than yours.</p>
         <div className="row" style={{ marginTop: 18 }}>

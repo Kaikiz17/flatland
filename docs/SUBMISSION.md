@@ -7,6 +7,10 @@
 
 Flatland is an open 1-wallet-1-vote election kit for anyone. It is not affiliated with, endorsed by, or officially connected to Robinhood Markets, Inc. The name and logo do not use the Robinhood brand.
 
+## How Flatland fits with World is Fair
+
+[World is Fair](https://worldisflat.fun/fair/) is $WIF’s official Decentralized Voting Layer, run by the WIF team ([@WIFonRH](https://x.com/WIFonRH)). It is not self-serve — only the WIF team runs official events, and there has been one so far: “Who is the G.O.A.T.?” (closed 14 Sep 2026, about 1,454 wallets; Vlad Tenev won with 297 votes). Fair runs WIF’s official votes; Flatland lets any project or DAO run its own — plus Sign, Stocks, auto lucky prizes and shareable cards. The two are complementary, not competing.
+
 ## The pitch
 
 Anyone can open an election in a minute: a question, options, a deadline, and a vote cost of at least 1 $WIF. One wallet gets one vote. Every vote burns $WIF. Voters can use a connected wallet or just send 1 $WIF to an option’s deposit address from any wallet app. Results are public, shareable, and collectible — an “I voted” card after you cast, with a landscape preview for X.
