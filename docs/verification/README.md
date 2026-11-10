@@ -1,8 +1,30 @@
-# Blockscout verification (pending)
+# Contract verification
 
-Automated `forge verify-contract` to https://robinhoodchain.blockscout.com was blocked by a Cloudflare bot challenge (HTTP 403 from this box). Verify manually: open each address on the explorer, choose Verify & Publish, method 'Solidity (Standard JSON input)', compiler v0.8.26+commit.8a97fa7a, EVM cancun, and upload the matching file here. Constructor args below (ABI-encoded hex, no 0x needed on some forms).
+## Sourcify (done, 10 Nov 2026)
 
-Or from a machine the explorer accepts: `forge verify-contract <addr> <path:Name> --chain-id 4663 --verifier blockscout --verifier-url https://robinhoodchain.blockscout.com/api/ --constructor-args <hex>`
+All 10 deployed contracts are verified on Sourcify (chain 4663) via the v2 API, using the standard JSON in this folder plus the deploy tx hash (compiler 0.8.26+commit.8a97fa7a, EVM cancun, optimizer 200 runs, via_ir). Sourcify reports `match` for both creation and runtime bytecode on every contract. In Sourcify v2 terms `match` is the non-exact level (bytecode is identical; the metadata hash differs from the deployed one). A resubmission with forge's own metadata.json returned "already verified, no better match", so this is the best level reachable from this build. `exact_match` would need a rebuild that reproduces the original metadata hash byte for byte.
+
+| Contract | Address | Creation | Runtime | Sourcify |
+|---|---|---|---|---|
+| Standing | `0x6E4d5caA2886b927660CFC8bb8938e12fa3F57f9` | match | match | [repo](https://repo.sourcify.dev/4663/0x6E4d5caA2886b927660CFC8bb8938e12fa3F57f9) · [API](https://sourcify.dev/server/v2/contract/4663/0x6E4d5caA2886b927660CFC8bb8938e12fa3F57f9?fields=all) |
+| ArbEntropy | `0xda21A3C248282B1974f372bb82bE1F71C1B4C17C` | match | match | [repo](https://repo.sourcify.dev/4663/0xda21A3C248282B1974f372bb82bE1F71C1B4C17C) · [API](https://sourcify.dev/server/v2/contract/4663/0xda21A3C248282B1974f372bb82bE1F71C1B4C17C?fields=all) |
+| Flatland | `0x365c58F9B820990a1c1C1F2f77404ec57207b1C6` | match | match | [repo](https://repo.sourcify.dev/4663/0x365c58F9B820990a1c1C1F2f77404ec57207b1C6) · [API](https://sourcify.dev/server/v2/contract/4663/0x365c58F9B820990a1c1C1F2f77404ec57207b1C6?fields=all) |
+| WifGate | `0x0418cfe1D505d665c6F5A56De982EA991259B3e7` | match | match | [repo](https://repo.sourcify.dev/4663/0x0418cfe1D505d665c6F5A56De982EA991259B3e7) · [API](https://sourcify.dev/server/v2/contract/4663/0x0418cfe1D505d665c6F5A56De982EA991259B3e7?fields=all) |
+| ParticipationVault | `0x2BAB6b4C125cD888F36CF9Db84d2F73EBFBf2558` | match | match | [repo](https://repo.sourcify.dev/4663/0x2BAB6b4C125cD888F36CF9Db84d2F73EBFBf2558) · [API](https://sourcify.dev/server/v2/contract/4663/0x2BAB6b4C125cD888F36CF9Db84d2F73EBFBf2558?fields=all) |
+| WifBuyback | `0x2f8B80C302664Fd81F5c48604F279753487F32c9` | match | match | [repo](https://repo.sourcify.dev/4663/0x2f8B80C302664Fd81F5c48604F279753487F32c9) · [API](https://sourcify.dev/server/v2/contract/4663/0x2f8B80C302664Fd81F5c48604F279753487F32c9?fields=all) |
+| BasketVault | `0x03B38516816cFeE9bFf2018D8A638a51ABe87b8b` | match | match | [repo](https://repo.sourcify.dev/4663/0x03B38516816cFeE9bFf2018D8A638a51ABe87b8b) · [API](https://sourcify.dev/server/v2/contract/4663/0x03B38516816cFeE9bFf2018D8A638a51ABe87b8b?fields=all) |
+| FlatAccountFactory | `0x0d3302a1A902e363cc5d7BC4663FD2098BC2776f` | match | match | [repo](https://repo.sourcify.dev/4663/0x0d3302a1A902e363cc5d7BC4663FD2098BC2776f) · [API](https://sourcify.dev/server/v2/contract/4663/0x0d3302a1A902e363cc5d7BC4663FD2098BC2776f?fields=all) |
+| FlatPaymaster | `0x13b452C867D89F907A56550A5C2744Aff8998e30` | match | match | [repo](https://repo.sourcify.dev/4663/0x13b452C867D89F907A56550A5C2744Aff8998e30) · [API](https://sourcify.dev/server/v2/contract/4663/0x13b452C867D89F907A56550A5C2744Aff8998e30?fields=all) |
+| WifSwapper | `0xd53Fb1dEE195beba25dae1937e28d65252230DcD` | match | match | [repo](https://repo.sourcify.dev/4663/0xd53Fb1dEE195beba25dae1937e28d65252230DcD) · [API](https://sourcify.dev/server/v2/contract/4663/0xd53Fb1dEE195beba25dae1937e28d65252230DcD?fields=all) |
+
+## Blockscout (https://robinhoodchain.blockscout.com)
+
+Blocked from the build box: both `/api/v2/smart-contracts/<addr>` and `/api` return HTTP 403 (Cloudflare "Just a moment..." challenge), so `forge verify-contract --verifier blockscout` cannot run from here and whether Blockscout shows these contracts as verified could not be checked. I did not try to bypass the challenge. If this instance imports from Sourcify it should pick them up on its own. If not, from a browser or machine the explorer accepts:
+
+- UI: open the address, Verify & Publish, 'Solidity (Standard JSON input)', compiler v0.8.26+commit.8a97fa7a, EVM cancun, upload `<Name>.standard-input.json` from this folder and paste the constructor args below.
+- CLI: `forge verify-contract <addr> <path:Name> --chain-id 4663 --verifier blockscout --verifier-url https://robinhoodchain.blockscout.com/api/ --constructor-args <hex>`
+
+## Constructor args and files
 
 ## Standing
 - address: `0x6e4d5caa2886b927660cfc8bb8938e12fa3f57f9`
