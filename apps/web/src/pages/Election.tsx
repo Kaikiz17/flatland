@@ -27,6 +27,11 @@ function Room({ e }: { e: ElectionView }) {
   const { query } = useRoute();
   const pre = Number(query.get('vote'));
   const [sel, setSel] = useState<number | null>(Number.isInteger(pre) && query.get('vote') !== null && pre >= 0 && pre < e.options.length ? pre : null);
+  const preParam = query.get('vote');
+  useEffect(() => { // a shared ?vote=N link should preselect even when navigating within the app
+    const n = Number(preParam);
+    if (preParam !== null && Number.isInteger(n) && n >= 0 && n < e.options.length) setSel(n);
+  }, [preParam, e.options.length]);
   const [tab, setTab] = useState<'wallet' | 'send'>('wallet');
   const tx = useTx();
   const open = e.status === 'open';

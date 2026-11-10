@@ -22,7 +22,7 @@ python3 - <<PY
 import json;p="deployments/local.json";d=json.load(open(p));d["deployBlock"]=$BLOCK;json.dump(d,open(p,"w"),indent=2)
 PY
 echo "▶ deployed; seeding…"
-RPC=http://127.0.0.1:$PORT npx tsx scripts/seed.mts
+RPC=http://127.0.0.1:$PORT LIVE=0 npx tsx scripts/seed.mts
 echo "▶ starting indexer/tallier on :$IDX"
 (cd packages/indexer && RPC=http://127.0.0.1:$PORT DEPLOYMENT=../../deployments/local.json TALLIER_KEY=$TALLIER_KEY DATA_DIR=../../.demo/data PORT=$IDX npx tsx src/main.ts >../../.demo/indexer.log 2>&1) & PIDS+=($!)
 echo "▶ building web"

@@ -1,5 +1,19 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Flatland widget demo</title></head>
-<body style="background:#f3eee1;padding:24px;font-family:system-ui">
-<h1>Your page</h1><p>Any site can embed “send 1 $WIF to act” with one tag:</p>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Flatland widget demo</title>
+<link rel="icon" href="./favicon.svg">
+<style>
+  body{margin:0;background:#f3eee1;color:#10203a;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.5}
+  main{max-width:640px;margin:0 auto;padding:40px 20px}
+  h1{font-size:2rem;margin:.2em 0}
+  .tag{font:600 .75rem ui-monospace,monospace;letter-spacing:.08em;color:#ff5a36;text-transform:uppercase}
+  pre{background:#fbf8ef;border:2px solid #10203a;border-radius:12px;padding:14px;overflow-x:auto;font-size:.85rem}
+  .muted{color:#4b5a73}
+</style></head>
+<body><main>
+<div class="tag">Example third-party page</div>
+<h1>Open the markets to everyone</h1>
+<p class="muted">This page belongs to some other app. It has no token economy of its own. One script tag adds a petition that burns 1 $WIF per signer and can be read by any contract with <code>hasActed(gateId, wallet)</code>.</p>
 <script src="./flatland-widget.js" data-gate="1" data-title="Sign the petition"></script>
-</body></html>
+<h3>The embed</h3>
+<pre>&lt;script src="https://your-app/flatland-widget.js"
+        data-gate="1" data-title="Sign the petition"&gt;&lt;/script&gt;</pre>
+</main></body></html>

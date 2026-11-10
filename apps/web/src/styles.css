@@ -64,7 +64,7 @@ label { font-weight: 700; font-size: .9rem; display: block; margin: 0 0 4px; }
 .err { color: var(--bad); font-weight: 650; font-size: .9rem; margin-top: 8px; word-break: break-word; }
 .ok { color: var(--ok); font-weight: 650; }
 hr { border: 0; border-top: 2px dashed var(--line); margin: 16px 0; }
-code, .code { font-family: var(--mono); font-size: .82rem; background: var(--paper2); padding: 2px 6px; border-radius: 6px; word-break: break-all; }
+code, .code { font-family: var(--mono); font-size: .82rem; background: var(--paper2); padding: 2px 6px; border-radius: 6px; overflow-wrap: anywhere; }
 pre.code { padding: 12px; overflow-x: auto; white-space: pre; border: 2px solid var(--ink); border-radius: 12px; background: var(--card); }
 
 /* hero */
