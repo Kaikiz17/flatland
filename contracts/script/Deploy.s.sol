@@ -40,7 +40,9 @@ contract Deploy is Script {
 
     function run() external {
         tallier = vm.envAddress("TALLIER");
-        vm.startBroadcast();
+        uint256 pk = vm.envOr("DEPLOYER_PK", uint256(0)); // env only, never a CLI flag, so it can't land in shell history or process lists
+        if (pk != 0) vm.startBroadcast(pk);
+        else vm.startBroadcast();
         (, address broadcaster,) = vm.readCallers(); // the deployer key; GOVERNANCE=<multisig> overrides
         governance = vm.envOr("GOVERNANCE", broadcaster);
         _deploy();

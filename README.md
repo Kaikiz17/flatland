@@ -105,6 +105,10 @@ node scripts/ui-e2e.mjs       # Playwright + injected wallet against the demo (n
    - **Pure static** (GitHub Pages / IPFS): upload `apps/web/dist`. The `api/` routes will not exist, so OG cards and MCP are unavailable.
    Edit `config.json` (`indexerUrl`, `rpc`, `appUrl`, `bundlerUrl`).
 
+## Mainnet deployment (Robinhood Chain 4663, 10 Nov 2026)
+
+Deployed by `0x2898121645aA02ff7151a5E42E71f7C8554ce64C` (also `governance` for the basket's beta caps). Real `ArbEntropy`, real Chainlink feeds, caps 100 USDG per wallet / 1,000 USDG total. Addresses and tx hashes: `deployments/robinhood-mainnet.json`. The web app's `config.json` points at `deployment.mainnet.json`. The default tallier is `0xAa30Ec61cF4Ded4Dc51a55Ce5Cd074E6E4b549c1` (dedicated key, NOT the deployer; run the indexer with that key). Blockscout verification is pending (see `docs/verification/`). Unaudited, paymaster unfunded.
+
 ## Known limitations
 
 - **Unaudited.** Do not put real money in before an audit.

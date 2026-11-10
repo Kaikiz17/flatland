@@ -21,3 +21,6 @@ Last updated: 2026-11-10 (Lagos).
 
 ## Beta caps (this session)
 - BasketVault: walletCap 100 USDG, tvlCap 1,000 USDG, governance-adjustable (setCaps/setGovernance), maxDeposit view; UI banner + per-wallet room; 11 offline + 1 fork test; e2e asserts caps
+
+## Mainnet (10 Nov 2026)
+- Full stack deployed to chain 4663, WifSwapper deployed, ~$1 ETH swapped to ~750 WIF. See deployments/robinhood-mainnet.json. Verification pending (Cloudflare blocks API).
