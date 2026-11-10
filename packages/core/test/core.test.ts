@@ -96,3 +96,33 @@ describe('merkle + deposit address', () => {
     expect(depositAddress(A(0x11), A(0x22), 2, 0)).not.toBe(a);
   });
 });
+
+import { toBundlerOp } from '../src/gasless';
+import { concat, pad, toHex } from 'viem';
+describe('gasless toBundlerOp', () => {
+  const u128 = (n: bigint) => pad(toHex(n), { size: 16 });
+  const base = {
+    sender: '0x00000000000000000000000000000000000000aa' as const, nonce: 5n, callData: '0x1234' as const,
+    accountGasLimits: concat([u128(600_000n), u128(400_000n)]), preVerificationGas: 60_000n,
+    gasFees: concat([u128(7n), u128(9n)]),
+    paymasterAndData: concat(['0x00000000000000000000000000000000000000bb', u128(200_000n), u128(100_000n), '0xdead']),
+    signature: '0xbeef' as const,
+  };
+  it('unpacks gas limits, fees and paymaster fields', () => {
+    const o: any = toBundlerOp({ ...base, initCode: '0x' });
+    expect(BigInt(o.verificationGasLimit)).toBe(600_000n);
+    expect(BigInt(o.callGasLimit)).toBe(400_000n);
+    expect(BigInt(o.maxPriorityFeePerGas)).toBe(7n);
+    expect(BigInt(o.maxFeePerGas)).toBe(9n);
+    expect(o.paymaster.toLowerCase()).toBe('0x00000000000000000000000000000000000000bb');
+    expect(BigInt(o.paymasterVerificationGasLimit)).toBe(200_000n);
+    expect(BigInt(o.paymasterPostOpGasLimit)).toBe(100_000n);
+    expect(o.paymasterData).toBe('0xdead');
+    expect(o.factory).toBeUndefined();
+  });
+  it('splits initCode into factory + factoryData', () => {
+    const o: any = toBundlerOp({ ...base, initCode: concat(['0x00000000000000000000000000000000000000cc', '0xabcdef']) });
+    expect(o.factory.toLowerCase()).toBe('0x00000000000000000000000000000000000000cc');
+    expect(o.factoryData).toBe('0xabcdef');
+  });
+});

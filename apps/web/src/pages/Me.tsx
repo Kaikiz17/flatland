@@ -5,6 +5,7 @@ import { useWallet } from '../lib/wallet';
 import { connectModal } from '../components/Wallet';
 import { wif } from '../lib/format';
 import { Empty } from '../components/ui';
+import { GaslessPanel } from '../components/GaslessPanel';
 
 export function Me() {
   const w = useWallet();
@@ -16,9 +17,9 @@ export function Me() {
     void client.readContract({ address: dep.standing, abi: standingAbi, functionName: 'record', args: [w.address] }).then(setRec);
     void client.readContract({ address: dep.standing, abi: standingAbi, functionName: 'tier', args: [w.address] }).then((t) => setTier(Number(t)));
   }, [w.address, client, dep]);
-  if (!w.address) return <Empty><p>Connect a wallet to see your streak and standing.</p><button className="btn" onClick={() => connectModal.open()}>Connect wallet</button></Empty>;
+  if (!w.address) return <><Empty><p>Connect a wallet to see your streak and standing.</p><button className="btn" onClick={() => connectModal.open()}>Connect wallet</button></Empty><GaslessPanel /></>;
   return (
-    <div className="card" style={{ maxWidth: 560 }}>
+    <><div className="card" style={{ maxWidth: 560 }}>
       <h2>Your standing</h2>
       <p className="addr">{w.address}</p>
       {!rec ? <div className="skeleton" /> : (
@@ -34,6 +35,8 @@ export function Me() {
         </>
       )}
     </div>
+    <GaslessPanel />
+    </>
   );
 }
 export { getState };

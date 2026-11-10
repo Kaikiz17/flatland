@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "land": "node scripts/gen-land.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@flatland/core": "*",

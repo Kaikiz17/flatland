@@ -4,7 +4,7 @@ import { execSync } from 'node:child_process';
 import { createPublicClient, createTestClient, createWalletClient, http, parseEther, maxUint256, getAddress, type Address, type Hex } from 'viem';
 import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts';
 import {
-  localChain, flatlandAbi, wifGateAbi, standingAbi, erc20Abi, basketVaultAbi, depositAddress, ONE_WIF, type Deployment, type ElectionView,
+  localChain, buildSponsoredVoteOp, accountAddress, entryPointAbi, ENTRY_POINT_V07, flatPaymasterAbi, flatlandAbi, wifGateAbi, standingAbi, erc20Abi, basketVaultAbi, depositAddress, ONE_WIF, type Deployment, type ElectionView,
 } from '@flatland/core';
 import { FlatlandService } from '../packages/indexer/src/service.ts';
 import { staticProvider } from '../packages/indexer/src/funding.ts';
@@ -229,6 +229,33 @@ const sBefore = await supply();
 await send(creator, dep.basket, basketVaultAbi, 'buybackAndBurn', [1n]);
 const burned = sBefore - (await supply());
 ok(burned > 0n, `vault fees bought and BURNED ${Number(burned / 10n ** 18n).toLocaleString()} WIF on Uniswap v4`);
+
+say('Gasless first vote: a newcomer with ZERO ETH votes through the real ERC-4337 EntryPoint, gas paid by the capped paymaster');
+const gId = Number(await pub.readContract({ address: dep.flatland, abi: flatlandAbi, functionName: 'electionCount' })) + 1;
+await send(creator, dep.flatland, flatlandAbi, 'createElection', [{ ...params, title: 'Gasless demo', end: BigInt((await pub.getBlock()).timestamp) + 86_400n, winners: 0, tallier: '0x0000000000000000000000000000000000000000' }]);
+{
+  const hash = await creator.w.writeContract({ address: dep.paymaster, abi: flatPaymasterAbi, functionName: 'fund', args: [], value: parseEther('0.05'), chain, account: creator.account } as any);
+  await pub.waitForTransactionReceipt({ hash });
+}
+const newbie = privateKeyToAccount(generatePrivateKey());
+const acct = await accountAddress(pub as any, dep, newbie.address, 1n);
+await giveWif(acct, 5n * ONE_WIF);
+ok((await pub.getBalance({ address: acct })) === 0n, `smart account ${acct} holds 5 WIF and exactly 0 ETH`);
+const supG = await supply();
+const op = await buildSponsoredVoteOp({ client: pub as any, dep, owner: newbie.address, salt: 1n, electionId: gId, option: 1, sign: (h) => newbie.signMessage({ message: { raw: h } }) });
+const bh = await creator.w.writeContract({ address: ENTRY_POINT_V07, abi: entryPointAbi, functionName: 'handleOps', args: [[op], creator.account.address], chain, account: creator.account, gas: 3_000_000n } as any); // the bundler is just any EOA
+await pub.waitForTransactionReceipt({ hash: bh });
+ok((await pub.getBalance({ address: acct })) === 0n, 'newcomer still has 0 ETH after voting');
+ok((await pub.readContract({ address: dep.flatland, abi: flatlandAbi, functionName: 'hasVoted', args: [BigInt(gId), acct] })) === true, 'gasless vote recorded for the smart account');
+ok((await supply()) === supG - ONE_WIF, 'the sponsored vote still burned 1 real WIF');
+// the same account cannot be sponsored twice
+let second = false;
+try {
+  const op2 = await buildSponsoredVoteOp({ client: pub as any, dep, owner: newbie.address, salt: 1n, electionId: gId, option: 0, sign: (h) => newbie.signMessage({ message: { raw: h } }) });
+  const h2 = await creator.w.writeContract({ address: ENTRY_POINT_V07, abi: entryPointAbi, functionName: 'handleOps', args: [[op2], creator.account.address], chain, account: creator.account, gas: 3_000_000n } as any);
+  second = (await pub.waitForTransactionReceipt({ hash: h2 })).status === 'success';
+} catch { /* expected: paymaster rejects */ }
+ok(!second, 'second sponsored op for the same account is rejected (abuse-resistant)');
 
 say('Done. Final snapshot totals');
 snap = await svc.tick();
