@@ -19,7 +19,7 @@ import {ISwapRouter02, IAggregatorV3, IStockToken} from "../interfaces/IDex.sol"
 ///         * Fees (0.30% on deposit & redeem) accumulate as USDG and are spent buying $WIF on Uniswap and burning it.
 ///         * Anyone can burn 1 $WIF to back a nominee Stock Token; enough distinct backers promote it onto the ballot.
 ///         * Exit is always possible: `redeemInKind` pays out pro-rata tokens with no oracle and no swap.
-/// @dev No owner, no admin, no upgrade. Asset registry (token, Chainlink proxy, v3 pool fee) is immutable per deployment.
+/// @dev No upgrade, no fund access. The ONLY admin power is `governance` adjusting the beta deposit caps (see setCaps); set governance to address(0) to freeze them. Asset registry (token, Chainlink proxy, v3 pool fee) is immutable per deployment.
 contract BasketVault is ERC20, ReentrancyGuard, IOutcomeExecutor {
     using SafeERC20 for IERC20;
 
@@ -68,6 +68,13 @@ contract BasketVault is ERC20, ReentrancyGuard, IOutcomeExecutor {
     uint256 public immutable maxSwapUsdg;
     uint256 public immutable promoteThreshold; // distinct backers needed to reach the ballot
 
+    // ── beta safety caps (USDG, 6 decimals). Unaudited launch: small per-wallet and total exposure.
+    uint256 public constant DEFAULT_WALLET_CAP = 100e6;
+    uint256 public constant DEFAULT_TVL_CAP = 1_000e6;
+    address public governance;
+    uint256 public walletCap = DEFAULT_WALLET_CAP; // max value one wallet's PEOPLE position may hold after a deposit
+    uint256 public tvlCap = DEFAULT_TVL_CAP; // max basket NAV after a deposit
+
     Asset[] internal _assets;
     uint16[] public targetBps; // by registry index; sums to 10_000 once set
     bool public targetsSet;
@@ -92,6 +99,8 @@ contract BasketVault is ERC20, ReentrancyGuard, IOutcomeExecutor {
     event Traded(address indexed token, bool buy, uint256 usdgAmount, uint256 tokenAmount);
     event FeesBurned(uint256 usdgSpent, uint256 wifBurned);
     event Nominated(uint256 indexed round, uint256 indexed assetIdx, address indexed backer, uint256 backersNow);
+    event CapsSet(uint256 walletCap, uint256 tvlCap);
+    event GovernanceSet(address indexed governance);
     event Promoted(uint256 indexed round, uint256 indexed assetIdx, uint256 backers);
 
     error StaleOracle(address token);
@@ -106,6 +115,9 @@ contract BasketVault is ERC20, ReentrancyGuard, IOutcomeExecutor {
     error NothingToDo();
     error ZeroAmount();
     error BadAsset();
+    error NotGovernance();
+    error WalletCapExceeded(uint256 room);
+    error TvlCapExceeded(uint256 room);
 
     constructor(
         Flatland hub_,
@@ -115,7 +127,8 @@ contract BasketVault is ERC20, ReentrancyGuard, IOutcomeExecutor {
         address router_,
         AssetCfg[] memory cfg,
         uint256 maxSwapUsdg_,
-        uint256 promoteThreshold_
+        uint256 promoteThreshold_,
+        address governance_
     ) ERC20("People's Basket", "PEOPLE") {
         hub = hub_;
         buyback = buyback_;
@@ -124,6 +137,8 @@ contract BasketVault is ERC20, ReentrancyGuard, IOutcomeExecutor {
         router = ISwapRouter02(router_);
         maxSwapUsdg = maxSwapUsdg_;
         promoteThreshold = promoteThreshold_;
+        governance = governance_;
+        emit GovernanceSet(governance_);
         for (uint256 i; i < cfg.length; ++i) {
             _assets.push(Asset(cfg[i].token, cfg[i].feed, cfg[i].poolFee, cfg[i].listed, cfg[i].symbol));
             targetBps.push(0);
@@ -181,6 +196,44 @@ contract BasketVault is ERC20, ReentrancyGuard, IOutcomeExecutor {
         shares = _sharesFor(usdg - fee, totalAssets());
     }
 
+    // ───────────────────────────── beta caps ─────────────────────────────
+
+    /// @dev Position value of `who` at the current NAV (share transfers can move value between wallets; this is a beta guard, not identity).
+    function _positionValue(address who, uint256 nav) internal view returns (uint256) {
+        return balanceOf(who) * (nav + 1) / (totalSupply() + 1e12);
+    }
+
+    function _checkCaps(address receiver, uint256 nav, uint256 netIn) internal view {
+        if (nav + netIn > tvlCap) revert TvlCapExceeded(tvlCap > nav ? tvlCap - nav : 0);
+        uint256 have = _positionValue(receiver, nav);
+        if (have + netIn > walletCap) revert WalletCapExceeded(walletCap > have ? walletCap - have : 0);
+    }
+
+    /// @notice Gross USDG `who` could deposit right now (fee included), given both caps. For the UI.
+    function maxDeposit(address who) external view returns (uint256) {
+        uint256 nav = totalAssets();
+        uint256 roomT = tvlCap > nav ? tvlCap - nav : 0;
+        uint256 have = _positionValue(who, nav);
+        uint256 roomW = walletCap > have ? walletCap - have : 0;
+        uint256 net = roomT < roomW ? roomT : roomW;
+        return net * 10_000 / (10_000 - FEE_BPS);
+    }
+
+    /// @notice Governance may raise/lower the beta caps (type(uint256).max = no cap). Cannot touch funds.
+    function setCaps(uint256 walletCap_, uint256 tvlCap_) external {
+        if (msg.sender != governance) revert NotGovernance();
+        walletCap = walletCap_;
+        tvlCap = tvlCap_;
+        emit CapsSet(walletCap_, tvlCap_);
+    }
+
+    /// @notice Hand over (e.g. to a multisig) or renounce (address(0) freezes the caps permanently).
+    function setGovernance(address g) external {
+        if (msg.sender != governance) revert NotGovernance();
+        governance = g;
+        emit GovernanceSet(g);
+    }
+
     // ───────────────────────────── deposit / redeem ─────────────────────────────
 
     function deposit(uint256 usdg, uint256 minShares, address receiver) external nonReentrant returns (uint256 shares) {
@@ -189,6 +242,7 @@ contract BasketVault is ERC20, ReentrancyGuard, IOutcomeExecutor {
         uint256 fee = usdg * FEE_BPS / 10_000;
         shares = _sharesFor(usdg - fee, nav);
         if (shares < minShares) revert Slippage();
+        _checkCaps(receiver, nav, usdg - fee);
         USDG.safeTransferFrom(msg.sender, address(this), usdg);
         pendingFees += fee;
         _mint(receiver, shares);

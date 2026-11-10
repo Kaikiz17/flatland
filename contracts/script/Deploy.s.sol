@@ -36,10 +36,13 @@ contract Deploy is Script {
 
     D internal d;
     address internal tallier;
+    address internal governance; // may only adjust the basket's beta deposit caps
 
     function run() external {
         tallier = vm.envAddress("TALLIER");
         vm.startBroadcast();
+        (, address broadcaster,) = vm.readCallers(); // the deployer key; GOVERNANCE=<multisig> overrides
+        governance = vm.envOr("GOVERNANCE", broadcaster);
         _deploy();
         vm.stopBroadcast();
         _write();
@@ -53,7 +56,7 @@ contract Deploy is Script {
         d.gate = new WifGate(Config.WIF, address(d.standing));
         d.pv = new ParticipationVault(d.hub);
         d.bb = new WifBuyback(vm.envOr("MAX_BUYBACK", uint256(5_000e6)));
-        d.vault = new BasketVault(d.hub, d.bb, d.standing, Config.USDG, Config.ROUTER02, Config.assets(), 25_000e6, 10);
+        d.vault = new BasketVault(d.hub, d.bb, d.standing, Config.USDG, Config.ROUTER02, Config.assets(), 25_000e6, 10, governance);
         d.factory = new FlatAccountFactory(IEntryPoint(Config.ENTRY_POINT_V07));
         d.pm = new FlatPaymaster(IEntryPoint(Config.ENTRY_POINT_V07), d.hub, d.standing, 0.0005 ether, 0.02 ether);
         address[] memory writers = new address[](3);

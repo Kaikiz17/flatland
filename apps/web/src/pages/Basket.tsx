@@ -7,6 +7,30 @@ import { basketBuyback, basketCall, basketDeposit, basketNominate, basketRedeem 
 import { ActionButton, TxStatus, color, useNow, useTx, Stat, Empty } from '../components/ui';
 import { compactWif, usdg, until } from '../lib/format';
 
+const UNCAPPED = (1n << 255n);
+function CapBanner() {
+  const { snap } = useApp();
+  const b = snap?.basket;
+  if (!b?.walletCap) return <div className="banner small" role="note"><b>Beta, unaudited.</b> Deposits are capped while the contracts are unaudited.</div>;
+  const wc = BigInt(b.walletCap), tc = BigInt(b.tvlCap);
+  const nav = b.navUsdg ? BigInt(b.navUsdg) : 0n;
+  const lifted = wc >= UNCAPPED && tc >= UNCAPPED;
+  const pct = tc > 0n && tc < UNCAPPED ? Math.min(100, Number(nav * 100n / tc)) : 0;
+  return (
+    <div className="banner" role="note" style={{ marginTop: 6 }}>
+      {lifted ? <><b>Beta, unaudited.</b> Deposit caps have been lifted by governance. Only deposit what you can afford to lose.</> : (
+        <>
+          <b>Beta: max ${usdg(wc, 0)} per wallet, unaudited.</b> The basket also holds at most ${usdg(tc, 0)} in total while we launch. Only deposit what you can afford to lose; you can always exit.
+          <div className="row small" style={{ marginTop: 8, gap: 10 }}>
+            <div style={{ flex: 1, height: 10, border: '2px solid var(--ink)', borderRadius: 8, background: '#fff', overflow: 'hidden' }} aria-label={`Basket ${pct}% full`}><div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent)' }} /></div>
+            <span className="mono">${usdg(nav, 0)} / ${usdg(tc, 0)} filled</span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function Basket() {
   const { snap, cfg } = useApp();
   const b = snap?.basket;
@@ -32,6 +56,7 @@ export function Basket() {
         <h1 style={{ fontSize: 'clamp(2rem, 6vw, 3.4rem)' }}>The People’s <em style={{ fontStyle: 'normal', background: 'var(--teal)', color: '#fff', padding: '0 .15em', borderRadius: 8, boxShadow: '4px 4px 0 var(--ink)' }}>Stock Token</em> Basket 🧺</h1>
         <p className="lead">A USDG vault that holds Stock Tokens. <b>What it holds is decided by 1-wallet-1-vote $WIF burns each week — not by who has the most money.</b> A small vault fee buys back and burns $WIF.</p>
       </div>
+      <CapBanner />
       <div className="grid g4">
         <Stat label="Basket NAV (USDG)" value={nav !== null ? `$${usdg(nav, 0)}` : 'oracle paused'} sub={nav === null ? 'market closed or feed stale' : undefined} />
         <Stat label="Share price" value={pps !== null ? `$${pps.toFixed(4)}` : '—'} sub="PEOPLE token" />
@@ -90,6 +115,7 @@ function Position({ pps }: { pps: number | null }) {
   const [inKind, setInKind] = useState(false);
   const [bal, setBal] = useState<{ usdg: bigint; shares: bigint } | null>(null);
   const [prev, setPrev] = useState<bigint | null>(null);
+  const [room, setRoom] = useState<bigint | null>(null); // gross USDG this wallet may still deposit under the beta caps
   const tx = useTx();
   useEffect(() => {
     if (!w.address || !client || !dep) { setBal(null); return; }
@@ -98,6 +124,7 @@ function Position({ pps }: { pps: number | null }) {
       client.readContract({ address: dep.usdg, abi: erc20Abi, functionName: 'balanceOf', args: [w.address] }),
       client.readContract({ address: dep.basket, abi: basketVaultAbi, functionName: 'balanceOf', args: [w.address] }),
     ]).then(([u, s]) => !dead && setBal({ usdg: u as bigint, shares: s as bigint })).catch(() => {});
+    client.readContract({ address: dep.basket, abi: basketVaultAbi, functionName: 'maxDeposit', args: [w.address] }).then((r) => !dead && setRoom(r as bigint)).catch(() => {});
     return () => { dead = true; };
   }, [w.address, client, dep, snap?.generatedAt]);
   let raw = 0n;
@@ -108,6 +135,7 @@ function Position({ pps }: { pps: number | null }) {
     client.readContract({ address: dep.basket, abi: basketVaultAbi, functionName: 'previewDeposit', args: [raw] }).then((r: any) => setPrev(r[0])).catch(() => setPrev(null));
   }, [raw, mode, client, dep]);
   const over = bal ? (mode === 'in' ? raw > bal.usdg : raw > bal.shares) : false;
+  const capped = mode === 'in' && room !== null && raw > room;
   return (
     <div className="card">
       <div className="tabs"><button className={mode === 'in' ? 'on' : ''} onClick={() => { setMode('in'); setAmt(''); }}>Deposit USDG</button><button className={mode === 'out' ? 'on' : ''} onClick={() => { setMode('out'); setAmt(''); }}>Redeem</button></div>
@@ -117,7 +145,8 @@ function Position({ pps }: { pps: number | null }) {
       {mode === 'in' ? <p className="small muted">{prev !== null ? <>You receive ≈ <b>{Number(formatUnits(prev, 18)).toLocaleString(undefined, { maximumFractionDigits: 4 })}</b> shares after the 0.30% fee (which buys back &amp; burns $WIF).</> : 'A 0.30% deposit fee funds the $WIF buyback & burn.'}</p> : (
         <label className="row small" style={{ fontWeight: 600 }}><input type="checkbox" style={{ width: 18 }} checked={inKind} onChange={(e) => setInKind(e.target.checked)} /> Redeem in kind (get the Stock Tokens themselves — works even when oracles are paused)</label>
       )}
-      <ActionButton className="btn block" tx={tx} disabled={raw === 0n || over} onRun={(s) => (mode === 'in' ? basketDeposit(raw, s) : basketRedeem(raw, inKind, s))}>{over ? 'Amount exceeds balance' : mode === 'in' ? 'Deposit' : 'Redeem'}</ActionButton>
+      {mode === 'in' && room !== null && room < (1n << 200n) ? <p className="small" style={{ fontWeight: 650 }}>Beta cap: you can deposit up to <b>${usdg(room)}</b> more{capped ? <span className="err"> — that amount is over your limit.</span> : '.'}</p> : null}
+      <ActionButton className="btn block" tx={tx} disabled={raw === 0n || over || capped} onRun={(s) => (mode === 'in' ? basketDeposit(raw, s) : basketRedeem(raw, inKind, s))}>{over ? 'Amount exceeds balance' : capped ? 'Over the beta deposit cap' : mode === 'in' ? 'Deposit' : 'Redeem'}</ActionButton>
       <TxStatus tx={tx} />
     </div>
   );

@@ -13,7 +13,7 @@ Target network: Robinhood Chain (Arbitrum Orbit L2, chain id 4663, ETH gas). $WI
 1. **Election kit.** Anyone creates an election (options, start/end, vote cost of at least 1 WIF, optional prize pool, optional winner draw). One wallet gets one vote and the cost is burned. A winner draw uses future-block randomness that anyone can verify. The participation vault, public audit export (Merkle root and every entry) and sybil groups are all published. Two ways to vote:
    - **Connect wallet**: `approve` + `vote`, fully onchain.
    - **Just send 1 $WIF** from Phantom, Trust or any wallet to the election's deposit address (an EIP-1167 clone at a CREATE2 address). The indexer/tallier attests these votes.
-2. **Executable outcomes.** An election can bind to an `executor` contract that runs on finalize. The flagship is the **People's Stock Token Basket** (`BasketVault`): a USDG vault whose Stock Token weights are decided each epoch by a 1-wallet-1-vote WIF-burn election. Rebalances use real Uniswap v3 swaps, with Chainlink price bounds and staleness checks. A 0.30% vault fee is routed to `WifBuyback`, which buys WIF on Uniswap v4 and burns it. Anyone can propose a basket by burning 1 WIF (`nominate`).
+2. **Executable outcomes.** An election can bind to an `executor` contract that runs on finalize. The flagship is the **People's Stock Token Basket** (`BasketVault`): a USDG vault whose Stock Token weights are decided each epoch by a 1-wallet-1-vote WIF-burn election. Rebalances use real Uniswap v3 swaps, with Chainlink price bounds and staleness checks. **Beta safety caps:** max 100 USDG per wallet position and 1,000 USDG total NAV (`walletCap` / `tvlCap`), adjustable only by `governance` (deployer by default, or `GOVERNANCE=<multisig>` at deploy; set to address(0) to freeze them). Governance cannot touch funds, weights, fees or assets, and exits are never capped. Caps are a position-value guard per receiving wallet, not identity (shares can be transferred). A 0.30% vault fee is routed to `WifBuyback`, which buys WIF on Uniswap v4 and burns it. Anyone can propose a basket by burning 1 WIF (`nominate`).
 3. **"Send 1 $WIF to act" rails.** `WifGate` is a reusable contract: anyone registers a gate, a wallet calls `act` to burn 1 WIF, and `hasActed(gate, wallet)` is readable by any contract (`WifGated` / `onlyActed`). `apps/web/public/flatland-widget.js` is a vanilla-JS widget (no build step) for petitions, RSVPs, allowlists and access gates. It fires a `flatland:acted` DOM event.
 
 Extras: voter map (opt-in, country-level only), per-election fairness score (A–F), gasless first vote (capped ERC-4337 paymaster), Telegram/X vote-bot code (dry-run only, no live accounts), streaks and standing, OG share cards, live election rooms (real-time vote feed, burned counter, map), and an agent API with MCP.
@@ -73,7 +73,7 @@ Requires Foundry, Node 20+. Needs an RPC that serves the chain (`RPC_UP`, defaul
 
 ```bash
 npm install
-npm test                      # offline Solidity (39) + all TS suites
+npm test                      # offline Solidity (50) + all TS suites
 npm run test:fork             # fork tests vs real WIF, Uniswap, EntryPoint (pins head-20)
 npm run e2e                   # full scenario on an anvil fork (docs/e2e-transcript.txt)
 bash scripts/demo-local.sh    # anvil fork + deploy + seed + indexer :8787 + web :5173  (LIVE=1 keeps voting)
@@ -91,7 +91,7 @@ node scripts/ui-e2e.mjs       # Playwright + injected wallet against the demo (n
    cd contracts
    TALLIER=0x... OUT=mainnet forge script script/Deploy.s.sol --rpc-url $RPC --private-key $DEPLOYER_PK --broadcast
    ```
-   Writes `deployments/mainnet.json`. Copy it to `apps/web/public/deployment.json`. Optional: `MAX_BUYBACK` (per-buyback USDG cap).
+   Optional: `GOVERNANCE=0x...` (who may adjust the basket's beta caps; default is the deployer). Writes `deployments/mainnet.json`. Copy it to `apps/web/public/deployment.json`. Optional: `MAX_BUYBACK` (per-buyback USDG cap).
    Then fund the paymaster (`FlatPaymaster.fund()` with a little ETH) if you want gasless first votes.
 2. Indexer/tallier (always-on host, for example Fly, Railway or a VPS):
    ```bash
@@ -118,7 +118,7 @@ node scripts/ui-e2e.mjs       # Playwright + injected wallet against the demo (n
 
 ## Go-live checklist (what the owner must supply)
 
-- [ ] Deployer wallet with ETH for gas and some WIF (to seed a first election)
+- [ ] Deployer wallet with ETH for gas (full stack is about 14M gas, roughly 0.0003 ETH at 0.02 gwei; budget ~0.001 ETH incl. headroom. L1 bridge fees to get ETH onto the chain are extra) and some WIF (to seed a first election)
 - [ ] Always-on host for the indexer/tallier and a funded `TALLIER_KEY`
 - [ ] A GitHub repo (none is configured) and a host (Vercel or Cloudflare Pages)
 - [ ] Optional: bundler URL for gasless; ETH to fund the paymaster

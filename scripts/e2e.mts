@@ -197,7 +197,24 @@ const lpTx = await whaleW.writeContract({ address: dep.usdg, abi: erc20Abi, func
 await pub.waitForTransactionReceipt({ hash: lpTx });
 await test.stopImpersonatingAccount({ address: USDG_POOL });
 await send(creator, dep.usdg, erc20Abi, 'approve', [dep.basket, maxUint256]);
-await send(creator, dep.basket, basketVaultAbi, 'deposit', [20_000n * 10n ** 6n, 0n, creator.account.address]);
+{
+  // beta safety caps: defaults 100 USDG per wallet / 1,000 USDG TVL
+  const rd = (fn: string, args: any[] = []) => pub.readContract({ address: dep.basket, abi: basketVaultAbi, functionName: fn, args } as any) as Promise<bigint>;
+  ok((await rd('walletCap')) === 100n * 10n ** 6n && (await rd('tvlCap')) === 1_000n * 10n ** 6n, 'default beta caps: 100 USDG per wallet, 1,000 USDG total');
+  let blocked = false;
+  try { await pub.simulateContract({ address: dep.basket, abi: basketVaultAbi, functionName: 'deposit', args: [150n * 10n ** 6n, 0n, creator.account.address], account: creator.account } as any); } catch { blocked = true; }
+  ok(blocked, 'a 150 USDG deposit is rejected by the per-wallet cap');
+  await send(creator, dep.basket, basketVaultAbi, 'deposit', [99n * 10n ** 6n, 0n, creator.account.address]);
+  ok((await rd('maxDeposit', [creator.account.address])) < 2n * 10n ** 6n, 'after a 99 USDG deposit the wallet has <2 USDG of room left');
+  // governance (the deployer on this devnet) raises the caps only so the big-basket scenario below can run; a real launch keeps them small
+  const gov = mk('0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80');
+  await send(creator, dep.basket, basketVaultAbi, 'redeem', [await pub.readContract({ address: dep.basket, abi: basketVaultAbi, functionName: 'balanceOf', args: [creator.account.address] }), 0n, creator.account.address]);
+  let nonGov = false;
+  try { await pub.simulateContract({ address: dep.basket, abi: basketVaultAbi, functionName: 'setCaps', args: [1n, 1n], account: creator.account } as any); } catch { nonGov = true; }
+  ok(nonGov, 'only governance can change the caps');
+  await send(gov, dep.basket, basketVaultAbi, 'setCaps', [100_000n * 10n ** 6n, 100_000n * 10n ** 6n]);
+}
+await send(creator, dep.basket, basketVaultAbi, 'deposit', [19_900n * 10n ** 6n, 0n, creator.account.address]);
 await send(creator, dep.basket, basketVaultAbi, 'openEpoch');
 const epoch = (await pub.readContract({ address: dep.basket, abi: basketVaultAbi, functionName: 'epochInfo', args: [1n] })) as any;
 const bid = epoch.electionId as bigint;

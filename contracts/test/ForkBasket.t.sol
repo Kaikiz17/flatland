@@ -19,7 +19,8 @@ contract ForkBasketTest is Base {
         if (block.chainid != 4663) return;
         _deployCore(Config.WIF);
         bb = new WifBuyback(5_000e6);
-        vault = new BasketVault(hub, bb, standing, Config.USDG, Config.ROUTER02, Config.assets(), 25_000e6, 3);
+        vault = new BasketVault(hub, bb, standing, Config.USDG, Config.ROUTER02, Config.assets(), 25_000e6, 3, address(this));
+        vault.setCaps(type(uint256).max, type(uint256).max); // these tests exercise big deposits; caps have their own tests
         address[] memory extra = new address[](1);
         extra[0] = address(vault);
         _lock(extra);
@@ -169,5 +170,28 @@ contract ForkBasketTest is Base {
         vm.stopPrank();
         assertEq(IERC20(nvda).balanceOf(user), 10e18);
         assertApproxEqAbs(IERC20(Config.USDG).balanceOf(user), 100_000e6 - 10_000e6 + 9_970e6, 1);
+    }
+
+    /// Beta caps against the REAL oracle/DEX stack: a fresh vault ships with 100 USDG / wallet and 1,000 USDG total.
+    function test_fork_beta_caps_default() public onFork {
+        BasketVault cv = new BasketVault(hub, bb, standing, Config.USDG, Config.ROUTER02, Config.assets(), 25_000e6, 3, address(0xBEEF));
+        assertEq(cv.walletCap(), 100e6);
+        assertEq(cv.tvlCap(), 1_000e6);
+        vm.startPrank(user);
+        IERC20(Config.USDG).approve(address(cv), type(uint256).max);
+        vm.expectRevert();
+        cv.deposit(101e6, 0, user);
+        cv.deposit(100e6, 0, user); // exactly at the cap (99.70 net)
+        vm.expectRevert();
+        cv.deposit(5e6, 0, user);
+        vm.stopPrank();
+        assertLt(cv.maxDeposit(user), 1e6);
+        // governance (not the user) can lift it
+        vm.expectRevert(BasketVault.NotGovernance.selector);
+        cv.setCaps(type(uint256).max, type(uint256).max);
+        vm.prank(address(0xBEEF));
+        cv.setCaps(500e6, 5_000e6);
+        vm.prank(user);
+        cv.deposit(100e6, 0, user);
     }
 }

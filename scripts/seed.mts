@@ -85,9 +85,14 @@ await send(CREATOR, dep.gate, wifGateAbi, 'createGate', [1, 'Lagos holders meetu
 for (let i = 0; i < 9; i++) { const v = await newVoter(); await send(v, dep.wif, erc20Abi, 'approve', [dep.gate, maxUint256]); await send(v, dep.gate, wifGateAbi, 'act', [1n]); if (i < 5) await send(v, dep.gate, wifGateAbi, 'act', [2n]); process.stdout.write('r'); }
 
 // basket
-await grant(dep.usdg, USDG_SRC, CREATOR.account.address, 5_000n * 10n ** 6n);
-await send(CREATOR, dep.usdg, erc20Abi, 'approve', [dep.basket, maxUint256]);
-await send(CREATOR, dep.basket, basketVaultAbi, 'deposit', [5_000n * 10n ** 6n, 0n, CREATOR.account.address]);
+// Beta caps are live: max 100 USDG per wallet, 1,000 USDG total. Four depositors, ~99 USDG each (gross incl. 0.30% fee).
+for (let i = 0; i < 4; i++) {
+  const d = mk(generatePrivateKey());
+  await test.setBalance({ address: d.account.address, value: parseEther('0.05') });
+  await grant(dep.usdg, USDG_SRC, d.account.address, 99n * 10n ** 6n);
+  await send(d, dep.usdg, erc20Abi, 'approve', [dep.basket, maxUint256]);
+  await send(d, dep.basket, basketVaultAbi, 'deposit', [99n * 10n ** 6n, 0n, d.account.address]);
+}
 await send(CREATOR, dep.basket, basketVaultAbi, 'openEpoch');
 const ep = (await pub.readContract({ address: dep.basket, abi: basketVaultAbi, functionName: 'epochInfo', args: [1n] })) as any;
 for (let i = 0; i < 10; i++) { const v = await newVoter(); await vote(v, Number(ep.electionId), weighted(ep.assets.length, [5, 4, 4, 3, 3, 2, 1, 1, 1, 1, 1].slice(0, ep.assets.length))); process.stdout.write('b'); }

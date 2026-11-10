@@ -13,7 +13,7 @@ contract WeightsTest is Test {
     function setUp() public {
         // pure-logic tests: registry/addresses irrelevant (WifBuyback is not constructed; only an address is stored)
         v = new BasketVault(
-            Flatland(address(1)), WifBuyback(payable(address(2))), Standing(address(3)), address(4), address(5), new BasketVault.AssetCfg[](0), 1, 1
+            Flatland(address(1)), WifBuyback(payable(address(2))), Standing(address(3)), address(4), address(5), new BasketVault.AssetCfg[](0), 1, 1, address(0)
         );
     }
 

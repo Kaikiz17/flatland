@@ -82,6 +82,9 @@ export interface BasketView {
   buybackWifBurned: string;
   round: number;
   promoteThreshold: number;
+  walletCap: string; // beta safety caps (USDG, 6 dec); 2^256-1 = uncapped
+  tvlCap: string;
+  governance: Address;
 }
 export interface Snapshot {
   version: 1;
@@ -327,6 +330,9 @@ export async function readSnapshot(client: PublicClient, dep: Deployment, opts: 
       buybackWifBurned: (await client.readContract({ address: dep.buyback, abi: wifBuybackAbi, functionName: 'totalWifBurned' })).toString(),
       round: epochCount,
       promoteThreshold: Number(await client.readContract({ ...bv, functionName: 'promoteThreshold' })),
+      walletCap: (await client.readContract({ ...bv, functionName: 'walletCap' })).toString(),
+      tvlCap: (await client.readContract({ ...bv, functionName: 'tvlCap' })).toString(),
+      governance: (await client.readContract({ ...bv, functionName: 'governance' })) as Address,
     };
   } catch (e) {
     opts.log?.('basket read failed: ' + (e as Error).message);
