@@ -85,6 +85,8 @@ export interface BasketView {
   walletCap: string; // beta safety caps (USDG, 6 dec); 2^256-1 = uncapped
   tvlCap: string;
   governance: Address;
+  /** vault actions read from logs: weights applied (TargetsSet), rebalances and the individual Stock Token trades */
+  events?: { kind: 'targets' | 'rebalanced' | 'traded'; tx: string; block: number; ts: number; epoch?: number; token?: string; symbol?: string; buy?: boolean; usdg?: string; tokenAmount?: string }[];
 }
 export interface Snapshot {
   version: 1;
@@ -411,8 +413,18 @@ export async function readSnapshot(client: PublicClient, dep: Deployment, opts: 
       const a = l.args as any;
       epochs.push({ epoch: Number(a.epoch), electionId: Number(a.electionId), assets: [...a.assets].map(Number), start: Number(a.start) });
     }
+    const evs: NonNullable<BasketView['events']> = [];
+    const wanted = vaultLogs.filter((l) => l.eventName === 'TargetsSet' || l.eventName === 'Rebalanced' || l.eventName === 'Traded').slice(-60);
+    await prefetchTs(client, wanted.map((l) => l.blockNumber as bigint));
+    for (const l of wanted) {
+      const a = l.args as any;
+      const base = { tx: l.transactionHash as string, block: Number(l.blockNumber), ts: blockTsCache.get(l.blockNumber as bigint) ?? 0 };
+      if (l.eventName === 'TargetsSet') evs.push({ kind: 'targets', epoch: Number(a.epoch), ...base });
+      else if (l.eventName === 'Rebalanced') evs.push({ kind: 'rebalanced', ...base });
+      else { const as = assets.find((x) => x.token.toLowerCase() === String(a.token).toLowerCase()); evs.push({ kind: 'traded', token: a.token, symbol: as?.symbol, buy: a.buy, usdg: a.usdgAmount.toString(), tokenAmount: a.tokenAmount.toString(), ...base }); }
+    }
     basket = {
-      address: dep.basket, epochs, assets,
+      address: dep.basket, epochs, assets, events: evs,
       pendingFees: need(3).toString(),
       totalFeesBurned: need(4).toString(),
       totalSupply: need(5).toString(),

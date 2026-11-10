@@ -4,6 +4,7 @@ import { ElectionCard } from '../components/ElectionCard';
 import { CountUp, Empty, Stat } from '../components/ui';
 import { WorldMap } from '../components/WorldMap';
 import { BurnHero } from '../components/BurnHero';
+import { GoatFeature } from '../components/GoatFeature';
 import { compact, compactWif } from '../lib/format';
 import { formatUnits } from 'viem';
 
@@ -20,10 +21,11 @@ export function Home() {
         <div className="row" style={{ marginTop: 18 }}>
           <a className="btn" href="#/elections">Vote now</a>
           <a className="btn ghost" href="#/create">Start an election</a>
-          <a className="btn ghost" href="#/basket">The People’s Basket 🧺</a>
+          <a className="btn ghost" href="#/basket">Community Stock Pot 🧺</a>
         </div>
       </section>
       <BurnHero />
+      <GoatFeature />
       <div className="horizon" />
       <section className="grid g4" aria-label="Live totals">
         <Stat label="$WIF burned" value={t ? <>🔥 <CountUp value={Number(formatUnits(BigInt(t.wifBurned), 18))} format={(n) => compact(n)} /></> : '—'} sub="every vote, every act, every buyback" />
@@ -43,14 +45,14 @@ export function Home() {
       <h2 style={{ marginTop: 40 }}>Three things, one flat rule</h2>
       <div className="grid g3">
         <div className="card"><h3>① Elections for everyone</h3><p>Anyone creates an election: options, deadline, vote cost (≥1 $WIF), optional prize pool. 1 wallet = 1 vote. A verifiable future-block draw rewards voters. Vote with your wallet <i>or</i> just send 1 $WIF to an option’s address from any wallet app.</p><a href="#/create"><b>Create →</b></a></div>
-        <div className="card"><h3>② Votes that execute</h3><p>An election can be bound to an on-chain action. Flagship: <b>the People’s Stock Token Basket</b> — a USDG vault whose holdings are chosen each week by 1-wallet-1-vote burns, not by who has the most money. Vault fees buy back &amp; burn $WIF.</p><a href="#/basket"><b>See the basket →</b></a></div>
-        <div className="card"><h3>③ “Send 1 $WIF to act”</h3><p>Petitions, RSVPs, allowlists, access gates. One contract, one embeddable widget. Other apps plug in instead of building their own token economy — each act burns $WIF and builds the actor’s on-chain streak.</p><a href="#/rails"><b>Browse rails →</b></a></div>
+        <div className="card"><h3>② Community Stock Pot</h3><p>Put in dollars. $WIF holders vote which stock it buys, 1 wallet = 1 vote. The contract buys the winners by itself, and you can withdraw your share anytime.</p><a href="#/basket"><b>See the Stock Pot →</b></a></div>
+        <div className="card"><h3>③ Send-to-act links</h3><p>Send 1 $WIF to an address from any wallet to vote, RSVP, sign or join. No website needed, and each one burns $WIF.</p><a href="#/rails"><b>Browse the links →</b></a></div>
       </div>
 
       <h2 style={{ marginTop: 40 }}>The flywheel</h2>
       <div className="card dark">
         <div className="row" style={{ gap: 8, fontWeight: 700, fontSize: '1.02rem' }}>
-          {['People vote', '→', '1+ $WIF burned', '→', 'Supply shrinks, outcomes execute', '→', 'Basket attracts USDG', '→', 'Fees buy $WIF', '→', 'Burned again', '↺'].map((s, i) => <span key={i} style={s.length < 3 ? { color: 'var(--gold)' } : { background: '#ffffff18', padding: '5px 10px', borderRadius: 10 }}>{s}</span>)}
+          {['People vote', '→', '1+ $WIF burned', '→', 'Supply shrinks, votes execute', '→', 'Stock Pot attracts dollars', '→', 'Pot fees buy $WIF', '→', 'Burned again', '↺'].map((s, i) => <span key={i} style={s.length < 3 ? { color: 'var(--gold)' } : { background: '#ffffff18', padding: '5px 10px', borderRadius: 10 }}>{s}</span>)}
         </div>
         <p className="small muted" style={{ marginTop: 12, marginBottom: 0 }}>Streaks and reputation (on-chain counts, no NFT) bring people back every week; the gasless first vote brings newcomers in without any ETH.</p>
       </div>

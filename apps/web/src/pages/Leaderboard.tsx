@@ -37,7 +37,7 @@ export function Leaderboard() {
           {rows.length === 0 ? <Empty>No activity yet.</Empty> : (
             <table className="t"><thead><tr><th>#</th><th>Wallet</th><th>Tier</th><th>Streak</th><th>Votes</th><th>Burned</th></tr></thead><tbody>
               {rows.map((r, i) => (
-                <tr key={r.who}><td>{i + 1}</td><td className="addr">{r.cc ? flag(r.cc) + ' ' : ''}{short(r.who)}</td><td>{tierName(r.tier)}</td><td className="mono">{r.streak}{r.bestStreak > r.streak ? <span className="muted"> (best {r.bestStreak})</span> : ''}</td><td className="mono">{r.votes + r.acts}</td><td className="mono">{wif(r.burned)}</td></tr>
+                <tr key={r.who}><td>{i + 1}</td><td className="addr">{r.cc ? flag(r.cc) + ' ' : ''}<a href={`#/score/${r.who}`}>{short(r.who)}</a></td><td>{tierName(r.tier)}</td><td className="mono">{r.streak}{r.bestStreak > r.streak ? <span className="muted"> (best {r.bestStreak})</span> : ''}</td><td className="mono">{r.votes + r.acts}</td><td className="mono">{wif(r.burned)}</td></tr>
               ))}
             </tbody></table>
           )}

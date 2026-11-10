@@ -6,6 +6,7 @@ import { useWallet } from '../lib/wallet';
 import { act, createGate } from '../lib/actions';
 import { ActionButton, Copy, Empty, TxStatus, useTx } from '../components/ui';
 import { ago, short, wif } from '../lib/format';
+import { Steps } from '../components/Steps';
 
 const KINDS = ['Petition', 'RSVP', 'Allowlist', 'Access gate'];
 const KIND_ICON = ['✍️', '🎟️', '📜', '🔑'];
@@ -16,10 +17,12 @@ export function Rails({ focus }: { focus?: number }) {
   const gates = [...(snap?.gates ?? [])].reverse();
   return (
     <>
-      <div className="row between"><h2>Rails — “send 1 $WIF to act”</h2><button className="btn" onClick={() => setShow(!show)}>{show ? 'Close' : '+ New rail'}</button></div>
-      <p className="muted" style={{ maxWidth: 680 }}>Petitions, RSVPs, allowlists and access gates in one contract. Each act burns $WIF, is capped at one per wallet, and builds the actor’s on-chain streak. Any app can read <code>hasActed(gateId, wallet)</code> or embed the <a href="#/build">widget</a> — no token economy of your own to build.</p>
+      <div className="row between"><h2>Send-to-act links</h2><button className="btn" onClick={() => setShow(!show)}>{show ? 'Close' : '+ New link'}</button></div>
+      <p className="lead" style={{ maxWidth: 680 }}><b>Send 1 $WIF to an address from any wallet to vote, RSVP, sign or join. No website needed.</b></p>
+      <Steps items={[['Pick a link', 'Petition, RSVP, list or access pass.'], ['Send 1 $WIF', 'From any wallet app to the address on the card.'], ['You’re counted', 'It’s recorded on-chain and burns your $WIF. One per wallet.']]} />
+      <p className="small muted" style={{ maxWidth: 680 }}>For developers: apps can read <code>hasActed(gateId, wallet)</code> or embed the <a href="#/build">widget</a>.</p>
       {show ? <NewGate onDone={() => setShow(false)} /> : null}
-      {!snap ? <div className="skeleton" /> : gates.length === 0 ? <Empty>No rails yet. Create the first petition.</Empty> : (
+      {!snap ? <div className="skeleton" /> : gates.length === 0 ? <Empty>No send-to-act links yet. Create the first one: a petition, an RSVP, a list or an access pass.</Empty> : (
         <div className="grid g2">{gates.map((g) => <GateCard key={g.id} g={g} focus={focus === g.id} />)}</div>
       )}
     </>

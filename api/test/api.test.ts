@@ -40,6 +40,26 @@ describe('JSON API', () => {
   });
 });
 
+describe('Flat Score + I voted cards', () => {
+  const who = A(101);
+  it('score JSON, card and share page', async () => {
+    const j: any = await (await get('/api/score/' + who)).json();
+    expect(j.address).toBe(who);
+    expect(j.rank === null || j.rank >= 1).toBe(true);
+    const svg = await (await get('/api/og/score/' + who + '.svg')).text();
+    expect(svg).toContain('Flat Score'); expect(svg).toContain('width="1200"');
+    const h = await (await get('/share/score/' + who)).text();
+    expect(h).toContain('og:image" content="https://flat.example/api/og/score/'); expect(h).toContain('#/score/' + who);
+  });
+  it('voted card + share page; bad option 404', async () => {
+    const svg = await (await get('/api/og/voted/1/1.svg')).text();
+    expect(svg).toContain('I VOTED'); expect(svg).toContain('B — SPY');
+    const h = await (await get('/share/voted/1/1')).text();
+    expect(h).toContain('I voted SPY'); expect(h).toContain('#/e/1?vote=1');
+    expect((await get('/share/voted/1/9')).status).toBe(404);
+  });
+});
+
 describe('OG card', () => {
   it('builds valid-looking SVG and escapes user text', () => {
     const svg = ogSvg({ id: 1, title: '<script>alert(1)</script> & more', options: ['A&B', 'C'], tallies: [3, 1], burnedWif: 1234, status: 'open', secondsLeft: 7200, voters: 4, grade: 'A' });

@@ -3,7 +3,9 @@ import { parseUnits, type Address } from 'viem';
 import { useApp } from '../lib/store';
 import { ActionButton, TxStatus, useTx, color, letter } from '../components/ui';
 import { createElection } from '../lib/actions';
-import { go } from '../lib/route';
+import { go, useRoute } from '../lib/route';
+import { TEMPLATES } from '../lib/templates';
+import { BasketTemplate } from '../components/BasketTemplate';
 import { ZERO, isAddr } from '../lib/format';
 import { processImage, uploadImage, uploadMeta } from '../lib/media';
 
@@ -12,11 +14,18 @@ type Img = { blob: Blob; url: string } | null;
 const DURATIONS: [string, number][] = [['1 hour', 3600], ['6 hours', 6 * 3600], ['1 day', 86400], ['3 days', 3 * 86400], ['7 days', 7 * 86400], ['30 days', 30 * 86400]];
 
 export function Create() {
+  const { query } = useRoute();
+  if (query.get('template') === 'basket') return <BasketTemplate />;
+  const tpl = TEMPLATES[query.get('template') as keyof typeof TEMPLATES];
+  return <CreateForm key={query.get('template') ?? ''} tpl={tpl} />;
+}
+
+function CreateForm({ tpl }: { tpl?: (typeof TEMPLATES)[keyof typeof TEMPLATES] }) {
   const { dep } = useApp();
   const tx = useTx();
-  const [title, setTitle] = useState('');
-  const [opts, setOpts] = useState(['', '']);
-  const [imgs, setImgs] = useState<Img[]>([null, null]);
+  const [title, setTitle] = useState<string>(tpl?.title ?? '');
+  const [opts, setOpts] = useState<string[]>(tpl ? [...tpl.options] : ['', '']);
+  const [imgs, setImgs] = useState<Img[]>((tpl ? tpl.options : ['', '']).map(() => null));
   const [imgErr, setImgErr] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const pickFor = useRef(0);
@@ -25,10 +34,10 @@ export function Create() {
     setImgErr('');
     try { const r = await processImage(f); const i = pickFor.current; setImgs((cur) => cur.map((x, j) => (j === i ? r : x))); } catch (e) { setImgErr((e as Error).message); }
   };
-  const [dur, setDur] = useState(86400);
+  const [dur, setDur] = useState<number>(tpl?.duration ?? 86400);
   const [cost, setCost] = useState('1');
-  const [prize, setPrize] = useState('0');
-  const [winners, setWinners] = useState('0');
+  const [prize, setPrize] = useState<string>(tpl?.prize ?? '0');
+  const [winners, setWinners] = useState<string>(tpl?.winners ?? '0');
   const [trust, setTrust] = useState<'default' | 'none' | 'custom'>('default');
   const [custom, setCustom] = useState('');
   const [cw, setCw] = useState(12);
@@ -53,7 +62,8 @@ export function Create() {
 
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
-      <h2>Start an election</h2>
+      <h2>{tpl ? 'Start the GOAT rematch' : 'Start an election'}</h2>
+      {tpl ? <div className="banner small"><b>Template: {tpl.title}.</b> 32 candidates from World is Fair’s public GOAT results, 7 days, 1 $WIF per vote. Edit anything, add pictures, then create. A prize pool for a random voter draw is optional (prize fields below).</div> : null}
       <p className="muted">Permissionless. 1 wallet = 1 vote, every vote burns $WIF. Share the link and watch the live room fill up.</p>
       <div className="card">
         <div className="field"><label>Question</label><input value={title} maxLength={140} onChange={(e) => setTitle(e.target.value)} placeholder="Which Stock Token should the world buy first?" /></div>

@@ -14,7 +14,8 @@ import { analyzeElection, type Analysis } from '../../packages/core/src/analysis
 import { depositAddress } from '../../packages/core/src/deposit.ts';
 import { voteLinks } from '../../packages/core/src/votelink.ts';
 import type { Deployment } from '../../packages/core/src/deployment.ts';
-import { ogSvg, svgToPng } from './og.ts';
+import { ogSvg, cardSvg, svgToPng } from './og.ts';
+import { flatScore } from '../../packages/core/src/score.ts';
 import { loadMedia, type KVLike, type Media } from './media.ts';
 import { telegramCalls } from './telegram.ts';
 
@@ -229,6 +230,39 @@ export async function handle(req: Request, env: Env = {}): Promise<Response> {
       }
       return new Response(svg, { headers: { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=30, s-maxage=60', 'access-control-allow-origin': '*' } });
     }
+    // ── Flat Score + "I voted" cards ──
+    const svgRes = (svg: string) => new Response(svg, { headers: { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=30, s-maxage=60', 'access-control-allow-origin': '*' } });
+    const shortA = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+    const scoreCard = (addr: string) => {
+      const f = flatScore(s, addr);
+      return { f, svg: cardSvg({ kicker: 'Flat Score', title: shortA(addr), big: String(f.score), bigLabel: f.rank ? `rank #${f.rank} of ${f.of}` : 'not ranked yet', lines: [`Tier: ${f.tierName}  ·  ${f.streak}-week streak`, `${f.votes + f.acts} votes & acts  ·  ${f.created} elections created`, `${Number(BigInt(f.burned) / 10n ** 16n) / 100} $WIF burned`], foot: 'Flat Score: public, on-chain, recomputable · open to everyone' }) };
+    };
+    const votedCard = async (id: number, opt: number) => {
+      const e = s.elections.find((x) => x.id === id);
+      if (!e || opt < 0 || opt >= e.options.length) return null;
+      const p = publicElection(s, e, appUrl, await loadMedia(env.kv, e.metaURI));
+      const burn = Number(BigInt(e.voteCost) / 10n ** 16n) / 100;
+      return { e, p, svg: cardSvg({ kicker: 'I voted', title: e.title, big: String(burn), bigLabel: '$WIF burned by my vote', lines: [`My pick: ${p.options[opt].letter} — ${p.options[opt].name}`, `${p.options.reduce((a, o) => a + o.votes, 0)} votes so far  ·  1 wallet = 1 vote`] }) };
+    };
+    let sm = /\/api\/score\/(0x[0-9a-fA-F]{40})$/.exec(path);
+    if (sm) return json(flatScore(s, sm[1]));
+    sm = /\/api\/og\/score\/(0x[0-9a-fA-F]{40})(?:\.svg)?$/.exec(path);
+    if (sm) return svgRes(scoreCard(sm[1]).svg);
+    sm = /\/api\/og\/voted\/(\d+)\/(\d+)(?:\.svg)?$/.exec(path);
+    if (sm) { const c = await votedCard(Number(sm[1]), Number(sm[2])); return c ? svgRes(c.svg) : json({ error: 'not found' }, 404); }
+    const page = (title: string, desc: string, image: string, url: string, dest: string) => {
+      const esc2 = (x: string) => x.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+      const tw = env.staticTwitterImage ? appUrl + '/og-default.png' : image;
+      return new Response(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc2(title)} — Flatland</title>
+<meta property="og:type" content="website"><meta property="og:title" content="${esc2(title)}"><meta property="og:description" content="${esc2(desc)}"><meta property="og:image" content="${image}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:url" content="${url}">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc2(title)}"><meta name="twitter:description" content="${esc2(desc)}"><meta name="twitter:image" content="${tw}">
+<meta http-equiv="refresh" content="0; url=${dest}"></head><body><a href="${dest}">Open →</a><script>location.replace(${JSON.stringify(dest)})</script></body></html>`, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=30' } });
+    };
+    sm = /\/share\/score\/(0x[0-9a-fA-F]{40})$/.exec(path);
+    if (sm) { const { f } = scoreCard(sm[1]); return page(`Flat Score ${f.score} — ${shortA(sm[1])}`, `${f.tierName} tier · ${f.votes + f.acts} votes & acts · ${f.streak}-week streak${f.rank ? ` · rank #${f.rank} of ${f.of}` : ''}. What is yours?`, `${appUrl}/api/og/score/${sm[1]}.svg`, `${appUrl}/share/score/${sm[1]}`, `${appUrl}/#/score/${sm[1]}`); }
+    sm = /\/share\/voted\/(\d+)\/(\d+)$/.exec(path);
+    if (sm) { const c = await votedCard(Number(sm[1]), Number(sm[2])); if (!c) return new Response('Not found', { status: 404 }); const o = c.p.options[Number(sm[2])]; return page(`I voted ${o.name} — ${c.e.title}`, `I burned $WIF to vote ${o.letter} — ${o.name}. 1 wallet = 1 vote. Cast yours.`, `${appUrl}/api/og/voted/${sm[1]}/${sm[2]}.svg`, `${appUrl}/share/voted/${sm[1]}/${sm[2]}`, `${appUrl}/#/e/${sm[1]}?vote=${sm[2]}`); }
+
     m = /\/(?:api\/)?share\/(\d+)$/.exec(path) ?? /\/v\/(\d+)\/(\d+)$/.exec(path);
     if (m) {
       const e = s.elections.find((x) => x.id === Number(m![1]));
@@ -258,7 +292,7 @@ export async function handle(req: Request, env: Env = {}): Promise<Response> {
 <meta http-equiv="refresh" content="0; url=${dest}"></head><body><a href="${dest}">Open the election →</a><script>location.replace(${JSON.stringify(dest)})</script></body></html>`;
       return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=30' } });
     }
-    return json({ error: 'not found', routes: ['/api/stats', '/api/elections', '/api/elections/:id', '/api/og/:id.png', '/api/share/:id', 'POST /api/mcp'] }, 404);
+    return json({ error: 'not found', routes: ['/api/stats', '/api/score/:address', '/share/score/:address', '/share/voted/:id/:opt', '/api/elections', '/api/elections/:id', '/api/og/:id.png', '/api/share/:id', 'POST /api/mcp'] }, 404);
   } catch (e) {
     return json({ error: (e as Error).message }, 502, { 'cache-control': 'no-store' });
   }

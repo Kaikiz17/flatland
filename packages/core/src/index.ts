@@ -11,3 +11,4 @@ export * from './snapshot.js';
 export * from './countries.js';
 export * from './analysis.js';
 export * from './gasless.js';
+export * from './score.js';

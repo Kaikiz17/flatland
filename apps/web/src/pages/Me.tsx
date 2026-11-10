@@ -31,6 +31,7 @@ export function Me() {
           </div>
           <hr />
           <p><b>Tier: {tierName(tier)}</b> <span className="muted small">({TIERS.slice(1).join(' → ')})</span></p>
+          <p><a className="btn sm" href={`#/score/${w.address}`}>Share my Flat Score →</a></p>
           <p className="small muted">Vote or act at least once each week to extend your streak. It lives on-chain as plain counts — no NFT, nothing to buy or sell.</p>
         </>
       )}

@@ -15,6 +15,8 @@ export interface AppConfig {
   pollMs: number;
   appUrl?: string;
   botName?: string;
+  /** featured home slot: the GOAT rematch election id. 0/unset = auto-detect the newest election titled "…GOAT…". */
+  goatElectionId?: number;
 }
 
 const DEFAULTS: AppConfig = {

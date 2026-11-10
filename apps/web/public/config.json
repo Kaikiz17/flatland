@@ -7,5 +7,6 @@
   "dexUrl": "https://worldisflat.fun",
   "pollMs": 6000,
   "auditUrl": ".",
-  "appUrl": "https://flatland.flatland.workers.dev"
+  "appUrl": "https://flatland.flatland.workers.dev",
+  "goatElectionId": 0
 }

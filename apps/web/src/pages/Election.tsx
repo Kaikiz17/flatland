@@ -8,6 +8,7 @@ import { challenge, claimPrize, finalize, fundPrize, seedDraw, vote, setCountry 
 import { ActionButton, CountUp, Copy, OptImg, TxStatus, color, letter, useNow, useTx, Empty } from '../components/ui';
 import { imgUrl, useMedia } from '../lib/media';
 import { ShareComposer } from '../components/ShareComposer';
+import { VotedCard } from '../components/VotedCard';
 import { DepositPanel } from '../components/DepositPanel';
 import { FairnessCard } from '../components/Fairness';
 import { WorldMap } from '../components/WorldMap';
@@ -109,6 +110,7 @@ function Room({ e }: { e: ElectionView }) {
               );
             })}
             {myVote ? <p className="ok small" style={{ margin: '10px 0 0' }}>✓ You voted {letter(myVote.option)} ({myVote.path === 'wallet' ? 'wallet' : 'deposit'}). One wallet, one vote.{collapsedMe ? ' ⚠ This wallet was grouped with another by funding source — see the fairness card.' : ''}</p> : null}
+            {myVote ? <VotedCard e={e} opt={myVote.option} /> : null}
             {open && !myVote ? (
               <>
                 <hr />

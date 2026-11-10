@@ -60,3 +60,10 @@ Last updated: 2026-11-10 (Lagos, 13:20).
 - Telegram: `POST /api/telegram` on the `flatland` worker (`api/_lib/telegram.ts`, pure brain + route glue). /start /elections /vote <id> <opt> (one-tap link + deposit address, https buttons only) /results <id> + inline mode (`@bot [id]`). Token = Worker secret `TELEGRAM_BOT_TOKEN` (NOT set; route returns 503 and sends nothing until it is); optional `TELEGRAM_WEBHOOK_SECRET` is checked against `X-Telegram-Bot-Api-Secret-Token`. `workers/make-payload.mjs web` now sets `keep_bindings: ['secret_text']` so redeploys keep the secrets.
 - To enable (user): create the bot with @BotFather (/setinline for inline mode), then set the secret on `flatland` (`PUT /accounts/<id>/workers/scripts/flatland/secrets {name:"TELEGRAM_BOT_TOKEN",type:"secret_text",text:...}`) and register the webhook: `https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://flatland.flatland.workers.dev/api/telegram` (add `&secret_token=...` + the matching secret).
 - Tests: `api/test/telegram.test.ts` (6), `node scripts/ui-share.mjs <web> <id>`; verified live on election #1.
+
+## Phase 3 + 4 + wording + "I voted" (live)
+- GOAT rematch template `#/create?template=goat` (32 World is Fair candidates, 7 days); home feature slot reads `goatElectionId` in config.json (0 = shows create CTA).
+- Flat Score `#/score/<addr>`, `/api/score/<addr>`, `/share/score/<addr>`, SVG card; linked from /me and leaderboard.
+- "I voted" card after a vote, `/share/voted/<id>/<opt>`.
+- Stock Pot showcase (executed-on-chain moment from vault logs), `?template=basket`, plain wording for Stock Pot and Send-to-act with 3-step strips. Steps to run: docs/stock-pot-run.md
+- Not done on purpose: tallier redeploy.

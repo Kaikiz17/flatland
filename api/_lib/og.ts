@@ -69,6 +69,25 @@ export function ogSvg(i: OgInput): string {
 </svg>`;
 }
 
+export interface CardInput { kicker: string; title: string; big: string; bigLabel: string; lines: string[]; foot?: string }
+/** Generic 1200x630 brand card (Flat Score, "I voted"). */
+export function cardSvg(i: CardInput): string {
+  const t = wrap(i.title, 30, 3);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="Liberation Sans, Helvetica, Arial, sans-serif">
+  <rect width="1200" height="630" fill="#f3eee1"/>
+  <rect x="24" y="24" width="1152" height="582" rx="26" fill="none" stroke="#10203a" stroke-width="5"/>
+  <rect x="64" y="56" width="52" height="52" rx="12" fill="#10203a"/><circle cx="90" cy="80" r="12" fill="#f3eee1"/><rect x="68" y="80" width="44" height="5" fill="#ff5a36"/>
+  <text x="132" y="92" font-size="34" font-weight="700" fill="#10203a">Flatland</text>
+  <text x="1136" y="88" text-anchor="end" font-size="22" font-weight="700" fill="#ff5a36">${esc(i.kicker.toUpperCase())}</text>
+  ${t.map((l, k) => `<text x="64" y="${190 + k * 58}" font-size="52" font-weight="700" fill="#10203a">${esc(l)}</text>`).join('')}
+  ${i.lines.slice(0, 4).map((l, k) => `<text x="64" y="${380 + k * 46}" font-size="30" font-weight="700" fill="#5b6780">${esc(l.slice(0, 44))}</text>`).join('')}
+  <rect x="760" y="284" width="376" height="232" rx="20" fill="#10203a"/>
+  <text x="948" y="338" text-anchor="middle" font-size="20" font-weight="700" fill="#b5bfd3">${esc(i.bigLabel.toUpperCase())}</text>
+  <text x="948" y="426" text-anchor="middle" font-size="${i.big.length > 7 ? 60 : 84}" font-weight="700" fill="#ff5a36">${esc(i.big)}</text>
+  <text x="64" y="590" font-size="22" font-weight="700" fill="#5b6780">${esc(i.foot ?? '1 wallet = 1 vote · every vote burns $WIF · open to everyone')}</text>
+</svg>`;
+}
+
 /** Rasterise with resvg (Node/Vercel). Returns null when no rasteriser is available (edge): callers fall back to SVG. */
 export async function svgToPng(svg: string, fontFiles: string[]): Promise<Uint8Array | null> {
   try {
