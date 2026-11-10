@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { robinhood, localChain, type Deployment } from '@flatland/core';
+import { robinhood, localChain, isPrizeRulesConfigured, type Deployment } from '@flatland/core';
 import { FlatlandService } from './service.js';
 import { startServer } from './server.js';
 import { blockscoutProvider, rpcScanProvider } from './funding.js';
@@ -23,6 +23,7 @@ const svc = new FlatlandService({
   publicDataUrl: env.PUBLIC_DATA_URL ?? `http://127.0.0.1:${port}/data`,
   tallierKey: (env.TALLIER_KEY as `0x${string}`) || undefined,
   keeper: env.KEEPER !== '0',
+  prizeRules: (isPrizeRulesConfigured(env.PRIZE_RULES) ? env.PRIZE_RULES : deployment.prizeRules) as `0x${string}` | undefined,
 });
 
 startServer(svc, port);

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { decodeFunctionData } from 'viem';
 import { handle } from '../_lib/handler.ts';
-import { ogSvg, wrap } from '../_lib/og.ts';
+import { ogSvg, wrap, votedSvg, signedSvg, signedHeadline } from '../_lib/og.ts';
 import { flatlandAbi } from '../../packages/core/src/abis.ts';
 
 const A = (n: number) => ('0x' + n.toString(16).padStart(40, '0')) as `0x${string}`;
@@ -13,7 +13,8 @@ const election = {
   depositsSubmitted: false, depositRoot: '0x', depositCount: 0, challengeEnds: 0, openChallenges: 0, burned: (3n * 10n ** 18n).toString(), prizePool: '0', drawBlock: 0, seed: '0x',
   chainVotes: [1, 2, 3].map((n, i) => ({ voter: A(100 + n), option: i === 2 ? 1 : 0, block: n, logIndex: 0, ts: now - 50, tx: ('0x' + String(n).padStart(64, '0')) as `0x${string}` })), depositVotes: [], depositAddresses: [A(200), A(201), A(202)], collapsed: [], challenges: [],
 };
-const snap = { version: 1, generatedAt: now, head: 10, deployment: dep, totals: { wifBurned: (3n * 10n ** 18n).toString(), electionBurned: '0', gateBurned: '0', buybackBurned: '0', votes: 3, elections: 1, gates: 0, participants: 3, acts: 0 }, elections: [election], gates: [], basket: null, countries: {}, voterCountry: {}, standing: {} };
+const gate = { id: 1, creator: A(50), kind: 0, title: 'Open the markets to everyone', metaURI: '', start: 0, end: 0, cost: (10n ** 18n).toString(), cap: 0, count: 4, actors: [] };
+const snap = { version: 1, generatedAt: now, head: 10, deployment: dep, totals: { wifBurned: (3n * 10n ** 18n).toString(), electionBurned: '0', gateBurned: '0', buybackBurned: '0', votes: 3, elections: 1, gates: 1, participants: 3, acts: 0 }, elections: [election], gates: [gate], basket: null, countries: {}, voterCountry: {}, standing: {} };
 const env = { INDEXER_URL: 'http://indexer.test', APP_URL: 'https://flat.example' };
 const get = (p: string) => handle(new Request('https://flat.example' + p), env);
 const rpc = (body: unknown) => handle(new Request('https://flat.example/api/mcp', { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } }), env);
@@ -54,9 +55,20 @@ describe('Flat Score + I voted cards', () => {
   it('voted card + share page; bad option 404', async () => {
     const svg = await (await get('/api/og/voted/1/1.svg')).text();
     expect(svg).toContain('I VOTED'); expect(svg).toContain('B — SPY');
+    expect(svg).toContain('$WIF BURNED');
+    const numbered = await (await get('/api/og/voted/1/1/172.svg')).text();
+    expect(numbered).toContain('VOTER #172');
     const h = await (await get('/share/voted/1/1')).text();
     expect(h).toContain('I voted SPY'); expect(h).toContain('#/e/1?vote=1');
     expect((await get('/share/voted/1/9')).status).toBe(404);
+  });
+  it('signed card + share page; unknown gate 404', async () => {
+    const svg = await (await get('/api/og/signed/1.svg')).text();
+    expect(svg).toContain('I SIGNED'); expect(svg).toContain('I signed for Open the'); expect(svg).toContain('markets to everyone');
+    expect(svg).toContain('PETITION');
+    const h = await (await get('/share/signed/1')).text();
+    expect(h).toContain('I signed for Open the markets'); expect(h).toContain('#/rails/1');
+    expect((await get('/share/signed/9')).status).toBe(404);
   });
 });
 
@@ -69,6 +81,17 @@ describe('OG card', () => {
     expect(svg).toContain('1,234');
   });
   it('wraps and truncates long titles', () => { expect(wrap('word '.repeat(60), 30, 3)).toHaveLength(3); });
+  it('voted and signed cards escape text and carry the motif', () => {
+    const v = votedSvg({ title: '<hack>', letter: 'A', option: 'Yes', burnedWif: 1, voterNo: 7 });
+    expect(v).toContain('VOTER #7'); expect(v).not.toContain('<hack>'); expect(v).toContain('&lt;hack&gt;');
+    expect(signedHeadline(0, 'Open the markets')).toBe('I signed for Open the markets');
+    expect(signedHeadline(0, 'against late fees')).toBe('I signed against late fees');
+    expect(signedHeadline(1, 'Lagos meetup')).toBe("I'm on the RSVP list");
+    expect(signedHeadline(2, 'early access')).toBe("I'm on the allow list");
+    expect(signedHeadline(3, 'members only')).toBe("I'm on the access list");
+    const s = signedSvg({ kind: 1, title: 'Lagos meetup', burnedWif: 1, position: 3 });
+    expect(s).toContain('I SIGNED'); expect(s).toContain('RSVP'); expect(s).toContain('#3');
+  });
   it('serves svg on demand and PNG when a rasteriser exists', async () => {
     const svg = await get('/api/og/1.svg');
     expect(svg.headers.get('content-type')).toBe('image/svg+xml');

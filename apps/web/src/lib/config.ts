@@ -17,6 +17,8 @@ export interface AppConfig {
   botName?: string;
   /** featured home slot: the GOAT rematch election id. 0/unset = auto-detect the newest election titled "…GOAT…". */
   goatElectionId?: number;
+  /** PrizeRules add-on address. Unset → lucky-voter UI and funding stay off. */
+  prizeRules?: `0x${string}`;
 }
 
 const DEFAULTS: AppConfig = {

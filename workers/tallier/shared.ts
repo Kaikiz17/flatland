@@ -6,6 +6,7 @@ export interface Env {
   LOGS_RPC_URL?: string; // optional endpoint(s) tried first for eth_getLogs only (keyed free tiers often cap log ranges)
   BLOCKSCOUT_URL?: string;
   APP_URL?: string;
+  PRIZE_RULES?: string; // optional PrizeRules address; unset → payLucky is a no-op
 }
 
 export const MAX_SUBREQUESTS = 44; // free plan allows 50 external subrequests per invocation

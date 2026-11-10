@@ -7,6 +7,7 @@ import { act, createGate } from '../lib/actions';
 import { ActionButton, Copy, Empty, TxStatus, useTx } from '../components/ui';
 import { ago, short, wif } from '../lib/format';
 import { Steps } from '../components/Steps';
+import { SignedCard } from '../components/SignedCard';
 
 const KINDS = ['Petition', 'RSVP', 'Allowlist', 'Access gate'];
 const KIND_ICON = ['✍️', '🎟️', '📜', '🔑'];
@@ -17,8 +18,8 @@ export function Rails({ focus }: { focus?: number }) {
   const gates = [...(snap?.gates ?? [])].reverse();
   return (
     <>
-      <div className="row between"><h2>Rails — send-to-act links</h2><button className="btn" onClick={() => setShow(!show)}>{show ? 'Close' : '+ New link'}</button></div>
-      <p className="lead" style={{ maxWidth: 680 }}><b>Send 1 $WIF to an address from any wallet to vote, RSVP, sign or join. No website, no sign-up, no gas games.</b> It’s recorded on-chain, one per wallet, and can’t be faked.</p>
+      <div className="row between"><h2>Sign</h2><button className="btn" onClick={() => setShow(!show)}>{show ? 'Close' : '+ New link'}</button></div>
+      <p className="lead" style={{ maxWidth: 680 }}><b>Sign for Petitions, RSVPs, allowlists and access gates in one contract. Each act burns $WIF, is capped at one per wallet, and builds the actor’s on-chain streak.</b></p>
       <Steps items={[['Pick a link', 'Petition, RSVP, list or access pass.'], ['Send 1 $WIF', 'From any wallet app to the address on the card.'], ['You’re counted', 'It’s recorded on-chain and burns your $WIF. One per wallet.']]} />
       <p className="small muted" style={{ maxWidth: 680 }}>For developers: apps can read <code>hasActed(gateId, wallet)</code> or embed the <a href="#/build">widget</a>.</p>
       {show ? <NewGate onDone={() => setShow(false)} /> : null}
@@ -43,7 +44,12 @@ function GateCard({ g, focus }: { g: GateView; focus: boolean }) {
       <h3 style={{ marginTop: 8 }}>{g.title}</h3>
       <div className="row between small"><span><b className="mono">{g.count}</b>{g.cap ? ` / ${g.cap}` : ''} {g.kind === 1 ? 'seats taken' : 'signed'}</span><span className="muted">🔥 {wif(g.cost)} $WIF each</span></div>
       {g.cap ? <div className="meter" style={{ margin: '8px 0' }}><i style={{ width: `${(g.count / g.cap) * 100}%` }} /></div> : null}
-      {mine ? <p className="ok small" style={{ margin: '8px 0' }}>✓ You’re #{mine.position + 1}.</p> : (
+      {mine ? (
+        <>
+          <p className="ok small" style={{ margin: '8px 0' }}>✓ You’re #{mine.position + 1}.</p>
+          <SignedCard g={g} position={mine.position + 1} />
+        </>
+      ) : (
         <>
           <ActionButton className="btn block" tx={tx} disabled={closed} onRun={(s) => act(g.id, BigInt(g.cost), s)}>{closed ? 'Closed' : `${label} · burn ${wif(g.cost)} $WIF`}</ActionButton>
           <TxStatus tx={tx} />
@@ -81,7 +87,7 @@ function NewGate({ onDone }: { onDone: () => void }) {
         <div className="field"><label>Open for days (0 = forever)</label><input inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value.replace(/[^0-9]/g, ''))} /></div>
       </div>
       <div className="field"><label>Details link (optional)</label><input value={meta} onChange={(e) => setMeta(e.target.value)} placeholder="https://… or ipfs://…" /></div>
-      <ActionButton className="btn" tx={tx} disabled={!title.trim() || costWei < 10n ** 18n} onRun={async (s) => { await createGate(kind, title.trim(), meta, 0, Number(days) ? Math.floor(Date.now() / 1000) + Number(days) * 86400 : 0, costWei, Number(cap) || 0, s); onDone(); }}>Create rail</ActionButton>
+      <ActionButton className="btn" tx={tx} disabled={!title.trim() || costWei < 10n ** 18n} onRun={async (s) => { await createGate(kind, title.trim(), meta, 0, Number(days) ? Math.floor(Date.now() / 1000) + Number(days) * 86400 : 0, costWei, Number(cap) || 0, s); onDone(); }}>Create Sign</ActionButton>
       <TxStatus tx={tx} />
     </div>
   );

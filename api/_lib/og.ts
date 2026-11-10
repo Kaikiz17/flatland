@@ -1,3 +1,6 @@
+import { signedHeadline, signedKindLabel } from '../../packages/core/src/prizeRules.ts';
+export { signedHeadline, signedKindLabel };
+
 /** OG share card: pure SVG string builder (unit-tested) + optional PNG rasteriser (X/Twitter ignore SVG og:images). */
 export interface OgInput {
   id: number;
@@ -97,4 +100,89 @@ export async function svgToPng(svg: string, fontFiles: string[]): Promise<Uint8A
   } catch {
     return null;
   }
+}
+
+export interface VotedCardInput {
+  title: string;
+  letter: string;
+  option: string;
+  burnedWif: number;
+  votes?: number;
+  voterNo?: number;
+}
+
+const earthMotif = (id: string, seal: string, sealFill: string, ring: string) => `
+  <defs>
+    <radialGradient id="glow-${id}" cx="22%" cy="44%" r="58%"><stop offset="0" stop-color="${id === 'v' ? '#f2b705' : '#0fa3a3'}" stop-opacity=".5"/><stop offset=".55" stop-color="#0fa3a3" stop-opacity=".18"/><stop offset="1" stop-color="#10203a" stop-opacity="0"/></radialGradient>
+    <linearGradient id="disc-${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9be7e7"/><stop offset=".46" stop-color="#0fa3a3"/><stop offset=".5" stop-color="#f2b705"/><stop offset=".54" stop-color="#c4a574"/><stop offset="1" stop-color="#6b3f2a"/></linearGradient>
+    <linearGradient id="panel-${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="${id === 'v' ? '#f3eee1' : '#eef6f4'}"/></linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="#10203a"/>
+  <rect width="1200" height="630" fill="url(#glow-${id})"/>
+  <g stroke="#f3eee1" stroke-opacity=".08" stroke-width="1.5"><circle cx="230" cy="330" r="210"/><circle cx="230" cy="330" r="240"/><circle cx="230" cy="330" r="270"/></g>
+  <ellipse cx="230" cy="338" rx="176" ry="28" fill="#000" opacity=".25"/>
+  <circle cx="230" cy="318" r="168" fill="url(#disc-${id})" stroke="#f3eee1" stroke-width="6"/>
+  <line x1="68" y1="318" x2="392" y2="318" stroke="#f2b705" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="230" cy="318" r="186" fill="none" stroke="${ring}" stroke-width="2.5" opacity=".5"/>
+  <circle cx="230" cy="150" r="58" fill="${sealFill}" stroke="#fffaf0" stroke-width="5"/>
+  <text x="230" y="142" text-anchor="middle" font-size="16" font-weight="800" fill="#fffaf0" letter-spacing="2">I</text>
+  <text x="230" y="168" text-anchor="middle" font-size="18" font-weight="800" fill="#fffaf0" letter-spacing="1.5">${seal}</text>`;
+
+/** Premium "I voted" share card: night-sky + flat-earth disc, voter number, pick, $WIF burned. */
+export function votedSvg(i: VotedCardInput): string {
+  const titles = wrap(i.title, 28, 3);
+  const pickLines = wrap(`${i.letter} — ${i.option}`, 28, 2);
+  const burn = (Math.round(i.burnedWif * 100) / 100).toLocaleString('en-US');
+  const no = i.voterNo && i.voterNo > 0 ? String(i.voterNo) : '';
+  const foot = (i.votes ? `${i.votes} votes so far · ` : '') + '1 wallet = 1 vote · every vote burns $WIF';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="Liberation Sans, Helvetica, Arial, sans-serif">
+  ${earthMotif('v', 'VOTED', '#ff5a36', '#f2b705')}
+  <text x="230" y="545" text-anchor="middle" font-size="18" font-weight="700" fill="#b5bfd3">FLATLAND</text>
+  <text x="230" y="572" text-anchor="middle" font-size="15" font-weight="700" fill="#7a8498">the world is flat. so is every vote.</text>
+  <rect x="468" y="56" width="684" height="518" rx="32" fill="url(#panel-v)"/>
+  <rect x="468" y="56" width="684" height="518" rx="32" fill="none" stroke="#f2b705" stroke-width="3"/>
+  <text x="504" y="108" font-size="18" font-weight="800" fill="#ff5a36" letter-spacing="3">I VOTED</text>
+  ${no ? `<text x="1108" y="110" text-anchor="end" font-size="18" font-weight="800" fill="#0fa3a3">VOTER #${esc(no)}</text>` : ''}
+  ${titles.map((l, k) => `<text x="504" y="${168 + k * 52}" font-size="42" font-weight="800" fill="#10203a">${esc(l)}</text>`).join('')}
+  <text x="504" y="340" font-size="16" font-weight="800" fill="#5b6780" letter-spacing="2">MY PICK</text>
+  ${pickLines.map((l, k) => `<text x="504" y="${384 + k * 44}" font-size="36" font-weight="800" fill="#10203a">${esc(l)}</text>`).join('')}
+  <rect x="504" y="470" width="612" height="72" rx="16" fill="#10203a"/>
+  <text x="528" y="514" font-size="22" font-weight="800" fill="#b5bfd3">$WIF BURNED</text>
+  <text x="1092" y="518" text-anchor="end" font-size="36" font-weight="800" fill="#ff5a36">${esc(burn)}</text>
+  <text x="504" y="560" font-size="16" font-weight="700" fill="#5b6780">${esc(foot)}</text>
+</svg>`;
+}
+
+export interface SignedCardInput {
+  kind: number;
+  title: string;
+  burnedWif: number;
+  position?: number;
+  headline?: string;
+}
+
+/** "I signed" share card for Sign (petition / RSVP / allowlist / access). */
+export function signedSvg(i: SignedCardInput): string {
+  const headline = i.headline ?? signedHeadline(i.kind, i.title);
+  const lines = wrap(headline, 26, 3);
+  const kind = signedKindLabel(i.kind);
+  const burn = (Math.round(i.burnedWif * 100) / 100).toLocaleString('en-US');
+  const pos = i.position && i.position > 0 ? `#${i.position}` : '';
+  const subLines = i.kind === 0 ? [] : wrap(i.title, 28, 2);
+  const kicker = `${kind.toUpperCase()}${pos ? '  ·  ' + pos : ''}`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="Liberation Sans, Helvetica, Arial, sans-serif">
+  ${earthMotif('s', 'SIGNED', '#0fa3a3', '#7dffd0')}
+  <text x="230" y="545" text-anchor="middle" font-size="18" font-weight="700" fill="#b5bfd3">FLATLAND  ·  SIGN</text>
+  <text x="230" y="572" text-anchor="middle" font-size="15" font-weight="700" fill="#7a8498">one wallet, one act, on-chain.</text>
+  <rect x="468" y="56" width="684" height="518" rx="32" fill="url(#panel-s)"/>
+  <rect x="468" y="56" width="684" height="518" rx="32" fill="none" stroke="#0fa3a3" stroke-width="3"/>
+  <text x="504" y="108" font-size="18" font-weight="800" fill="#0fa3a3" letter-spacing="3">I SIGNED</text>
+  <text x="1108" y="110" text-anchor="end" font-size="18" font-weight="800" fill="#10203a">${esc(kicker)}</text>
+  ${lines.map((l, k) => `<text x="504" y="${178 + k * 54}" font-size="42" font-weight="800" fill="#10203a">${esc(l)}</text>`).join('')}
+  ${subLines.map((l, k) => `<text x="504" y="${360 + k * 40}" font-size="26" font-weight="700" fill="#5b6780">${esc(l)}</text>`).join('')}
+  <rect x="504" y="470" width="612" height="72" rx="16" fill="#10203a"/>
+  <text x="528" y="514" font-size="22" font-weight="800" fill="#b5bfd3">$WIF BURNED</text>
+  <text x="1092" y="518" text-anchor="end" font-size="36" font-weight="800" fill="#ffd966">${esc(burn)}</text>
+  <text x="504" y="560" font-size="16" font-weight="700" fill="#5b6780">capped at one per wallet · builds an on-chain streak</text>
+</svg>`;
 }

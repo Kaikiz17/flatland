@@ -3,10 +3,11 @@ import { join } from 'node:path';
 import { createPublicClient, createWalletClient, http, type Address, type Chain, type PublicClient, type Transport, type WalletClient, type Account } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import {
-  analyzeElection, flatlandAbi, readSnapshot, type LogCache, type Deployment, type Snapshot, type ElectionView, type FundingProvider, type Analysis,
+  analyzeElection, flatlandAbi, prizeRulesAbi, readSnapshot, type LogCache, type Deployment, type Snapshot, type ElectionView, type FundingProvider, type Analysis,
 } from '@flatland/core';
 import { planElection, type ElectionPlan } from './tally.js';
 import { cached } from './funding.js';
+import { isPrizeRulesConfigured, planLuckyPayouts, PRIZE_KIND_LUCKY } from './prizes.js';
 
 export interface ServiceConfig {
   chain: Chain;
@@ -17,6 +18,8 @@ export interface ServiceConfig {
   funding: FundingProvider;
   tallierKey?: `0x${string}`;
   keeper?: boolean; // finalize/sweep/seed/claimStanding with the same key
+  /** PrizeRules add-on address. Unset / zero → payLucky is a no-op. */
+  prizeRules?: Address;
   log?: (m: string) => void;
   /** Stateless/edge mode (Cloudflare cron): no disk, no waiting for receipts, bounded work per tick. */
   edge?: boolean;
@@ -86,6 +89,9 @@ export class FlatlandService {
     this.publishSnapshot();
 
     if (this.wallet) {
+      try { await this.prizeDuties(snap); } catch (err) {
+        this.log(`prizes: ${(err as Error).message.split('\n')[0]}`);
+      }
       for (const e of snap.elections) {
         try {
           if (isTallier && e.tallier.toLowerCase() === this.account!.address.toLowerCase()) await this.tallierDuties(e, this.plans.get(e.id)!);
@@ -188,6 +194,37 @@ export class FlatlandService {
             await this.write({ ...base, functionName: 'claimStanding', args: [BigInt(e.id), chainCount + BigInt(i), ent.voter, ent.option, plan.proofs[i]] });
           } catch { /* already counted via chain path */ }
         }
+      }
+    }
+  }
+
+  /** Permissionless payLucky trigger. No-op until PRIZE_RULES / cfg.prizeRules is a real address. */
+  private async prizeDuties(snap: Snapshot) {
+    const addr = this.cfg.prizeRules ?? this.cfg.deployment.prizeRules;
+    if (!this.wallet || !isPrizeRulesConfigured(addr)) return;
+    const prizes = { address: addr, abi: prizeRulesAbi } as const;
+    const hub = { address: this.cfg.deployment.flatland, abi: flatlandAbi } as const;
+    for (const e of snap.elections) {
+      try {
+        const prize = (await this.client.readContract({ ...prizes, functionName: 'getPrize', args: [BigInt(e.id)] })) as { creator: string; luckyCount: number };
+        if (!prize.creator || /^0x0{40}$/i.test(prize.creator) || !prize.luckyCount) continue;
+        const lucky = (await this.client.readContract({ ...prizes, functionName: 'getLucky', args: [BigInt(e.id)] })) as readonly [readonly bigint[], readonly bigint[]];
+        const voterCount = (await this.client.readContract({ ...hub, functionName: 'voterCount', args: [BigInt(e.id)] })) as bigint;
+        const claimed: boolean[] = [];
+        for (let slot = 0; slot < lucky[0].length; slot++) {
+          claimed.push(await this.client.readContract({ ...prizes, functionName: 'claimed', args: [BigInt(e.id), PRIZE_KIND_LUCKY, BigInt(slot)] }) as boolean);
+        }
+        const due = planLuckyPayouts({
+          prizeRules: addr,
+          lucky: lucky[0].map((position, i) => ({ position, claimed: claimed[i] })),
+          voterCount,
+        });
+        for (const slot of due) {
+          await this.write({ address: addr, abi: prizeRulesAbi, functionName: 'payLucky', args: [BigInt(e.id), BigInt(slot)] });
+          this.log(`election ${e.id}: payLucky slot ${slot} (voter #${lucky[0][slot]})`);
+        }
+      } catch (err) {
+        this.log(`election ${e.id} prizes: ${(err as Error).message.split('\n')[0]}`);
       }
     }
   }

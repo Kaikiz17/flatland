@@ -72,3 +72,10 @@ Last updated: 2026-11-10 (Lagos, 13:20).
 - `contracts/src/PrizeRules.sol` + `contracts/test/PrizeRules.t.sol` (10 pass), docs/prize-rules.md (gas: ~1.97M, ~$0.13), Create preview behind `#/create?prizes=1`. NOT deployed.
 - Lucky voters are plain on-chain numbers set at create (no commit-reveal), instant permissionless `payLucky`; see docs.
 - Everything requested (phases 1-4, g, h, i) is built; the Telegram bot only works once TELEGRAM_BOT_TOKEN is set (not set). Tallier not redeployed.
+
+
+## Rename + share cards + lucky trigger (10 Nov 2026, Lagos)
+- User-facing name changes only: People’s Basket → **Stocks**; Rails → **Sign**. Sign tagline is the exact sentence about petitions/RSVPs/allowlists/access gates. Routes and contract names unchanged (`#/basket`, `#/rails`).
+- New designed “I signed” card + `/share/signed/:id` and `/api/og/signed/:id.svg`. Redesigned “I voted” card (flat-earth motif, voter number, pick, $WIF burned) for in-app and OG (`/share/voted/:id/:opt/:voterNo?`).
+- Tallier `payLucky` auto-trigger is in the indexer + `flatland-tallier`, gated on `PRIZE_RULES` / `prizeRules`. Unset = no-op (current live deploy). LuckyHit pop-up in the election room. Create page prizes panel is a checkbox (also `#/create?prizes=1`). PrizeRules still NOT deployed.
+- Live: https://flatland.flatland.workers.dev (web + tallier redeployed). Screens: docs/screens/25, 25b, 26, 27, 28.

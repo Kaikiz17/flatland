@@ -21,7 +21,7 @@ export function Home() {
         <div className="row" style={{ marginTop: 18 }}>
           <a className="btn" href="#/elections">Vote now</a>
           <a className="btn ghost" href="#/create">Start an election</a>
-          <a className="btn ghost" href="#/basket">People’s Basket 🧺</a>
+          <a className="btn ghost" href="#/basket">Stocks 🧺</a>
         </div>
       </section>
       <BurnHero />
@@ -30,7 +30,7 @@ export function Home() {
       <section className="grid g4" aria-label="Live totals">
         <Stat label="$WIF burned" value={t ? <>🔥 <CountUp value={Number(formatUnits(BigInt(t.wifBurned), 18))} format={(n) => compact(n)} /></> : '—'} sub="every vote, every act, every buyback" />
         <Stat label="Votes cast" value={t ? <CountUp value={t.votes} format={(n) => Math.round(n).toLocaleString()} /> : '—'} />
-        <Stat label="Elections" value={t?.elections ?? '—'} sub={`${t?.gates ?? 0} rails live`} />
+        <Stat label="Elections" value={t?.elections ?? '—'} sub={`${t?.gates ?? 0} Sign links live`} />
         <Stat label="Wallets" value={t?.participants ?? '—'} sub={`${t?.acts ?? 0} “send 1 $WIF” acts`} />
       </section>
 
@@ -45,8 +45,8 @@ export function Home() {
       <h2 style={{ marginTop: 40 }}>Three things, one flat rule</h2>
       <div className="grid g3">
         <div className="card"><h3>① Elections for everyone</h3><p>Anyone creates an election: options, deadline, vote cost (≥1 $WIF), optional prize pool. 1 wallet = 1 vote. A verifiable future-block draw rewards voters. Vote with your wallet <i>or</i> just send 1 $WIF to an option’s address from any wallet app.</p><a href="#/create"><b>Create →</b></a></div>
-        <div className="card"><h3>② People’s Basket — the community stock pot</h3><p>Put in dollars. $WIF holders vote which stock it buys, 1 wallet = 1 vote. The contract buys the winners by itself, and you can withdraw your share anytime.</p><a href="#/basket"><b>See the Stock Pot →</b></a></div>
-        <div className="card"><h3>③ Rails — send-to-act links</h3><p>Send 1 $WIF to an address from any wallet to vote, RSVP, sign or join. No website needed, and each one burns $WIF.</p><a href="#/rails"><b>Browse the links →</b></a></div>
+        <div className="card"><h3>② Stocks — the community stock pot</h3><p>Put in dollars. $WIF holders vote which stock it buys, 1 wallet = 1 vote. The contract buys the winners by itself, and you can withdraw your share anytime.</p><a href="#/basket"><b>See the Stock Pot →</b></a></div>
+        <div className="card"><h3>③ Sign</h3><p>Sign for Petitions, RSVPs, allowlists and access gates in one contract. Each act burns $WIF, is capped at one per wallet, and builds the actor’s on-chain streak.</p><a href="#/rails"><b>Browse the links →</b></a></div>
       </div>
 
       <h2 style={{ marginTop: 40 }}>The flywheel</h2>

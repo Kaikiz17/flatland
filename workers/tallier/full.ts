@@ -8,7 +8,7 @@
  *   • attestation is held back while funding-source lookups are incomplete (never guess)
  */
 import { custom, fallback, http, type Transport } from 'viem';
-import { robinhood, type Deployment, type LogCache } from '@flatland/core';
+import { robinhood, isPrizeRulesConfigured, type Deployment, type LogCache } from '@flatland/core';
 import { FlatlandService } from '../../packages/indexer/src/service.ts';
 import { blockscoutProvider } from '../../packages/indexer/src/funding.ts';
 import deploymentJson from '../../deployments/robinhood-mainnet.json';
@@ -97,6 +97,7 @@ export async function fullPass(env: Env, st: any, cheap: { sig: string; election
       deployment: dep, funding, dataDir: '/tmp/none',
       publicDataUrl: `${(env.APP_URL ?? '').replace(/\/$/, '')}/data`,
       tallierKey: env.TALLIER_KEY as `0x${string}` | undefined,
+      prizeRules: (isPrizeRulesConfigured(env.PRIZE_RULES) ? env.PRIZE_RULES : dep.prizeRules) as `0x${string}` | undefined,
       keeper: true, edge: true, canAttest: () => deferred === 0,
       log: (m) => { logs.push(m); console.log(m); },
     },

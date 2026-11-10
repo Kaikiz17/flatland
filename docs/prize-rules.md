@@ -24,7 +24,16 @@ The hub has no vote hook, so a payout in the very same transaction as the Nth vo
 Lucky positions and amounts are stored on-chain and readable with `getLucky(id)`. The UI never lists them; it only shows "lucky voter prizes: N hidden spots". Anyone reading the chain can see them.
 
 ## UI
-`#/create?prizes=1` shows a preview panel (inputs + total to fund). Funding is disabled until the contract is deployed and its address added to the deployment file.
+The create page has a checkbox, “Add first, last, lucky and random prizes” (also opens with `#/create?prizes=1`). Inputs + total to fund. Funding stays disabled until the contract is deployed and its address is configured. After a vote, the election room reads the `LuckyHit` event and shows “You hit lucky voter #N!”.
+
+## Tallier `payLucky` auto-trigger
+The tallier (`packages/indexer` + `flatland-tallier` worker) calls permissionless `payLucky(id, slot)` as soon as `hub.voterCount` reaches that lucky number. It is gated on a `PRIZE_RULES` address (`ServiceConfig.prizeRules`, Worker env `PRIZE_RULES`, or `prizeRules` in the deployment JSON). While that address is unset or zero, the duty is a no-op (no extra RPC, no transactions).
+
+## How to switch on lucky payouts after deploy (NOT done; needs the owner’s go)
+1. Deploy `PrizeRules` with the hub address (≈1.97M gas, about 0.00006 ETH / $0.13). Do not do this until the owner says go.
+2. Put the new address in `deployments/robinhood-mainnet.json` as `prizeRules`, and in `apps/web/public/config.json` as `prizeRules` (so the UI can read `LuckyHit` and enable funding).
+3. Set the `PRIZE_RULES` binding on Worker `flatland-tallier` (plain text or secret): `PUT /accounts/<id>/workers/scripts/flatland-tallier/secrets` (or a `plain_text` binding) `{name:"PRIZE_RULES", type:"plain_text", text:"0x…"}`.
+4. Redeploy the `flatland` web worker and `flatland-tallier` (keep_bindings preserves `TALLIER_KEY` and `RPC_URL`). After that, creators can fund prizes from the create panel; the tallier pays lucky spots within about a minute of voter #N, and the voter sees the pop-up.
 
 ## Deploy cost on 4663 (NOT deployed, nothing spent)
 - Creation bytecode: 9,073 bytes (incl. constructor arg).

@@ -45,6 +45,7 @@ function CreateForm({ tpl }: { tpl?: (typeof TEMPLATES)[keyof typeof TEMPLATES] 
   const [cw, setCw] = useState(12);
   const [meta, setMeta] = useState('');
   const [executor, setExecutor] = useState('');
+  const [showPrizes, setShowPrizes] = useState(query.get('prizes') === '1');
 
   const cleaned = opts.map((o) => o.trim()).filter(Boolean);
   let costWei = 0n, prizeWei = 0n;
@@ -109,9 +110,16 @@ function CreateForm({ tpl }: { tpl?: (typeof TEMPLATES)[keyof typeof TEMPLATES] 
             <div className="field"><label>Challenge window (hours)</label><input inputMode="numeric" value={cw} onChange={(e) => setCw(Math.min(168, Math.max(1, Number(e.target.value.replace(/[^0-9]/g, '')) || 1)))} /></div>
             <div className="field"><label>Details link (ipfs:// or https://)</label><input value={meta} onChange={(e) => setMeta(e.target.value)} placeholder="optional" /></div>
           </div>
-          <div className="field"><label>Outcome executor contract</label><input value={executor} onChange={(e) => setExecutor(e.target.value.trim())} placeholder="optional: 0x… implements onFinalize(id, winner, tally)" /><div className="hint">Binds the result to an on-chain action when the election finalizes (the People’s Basket uses this). Gas-capped and retryable.</div></div>
+          <div className="field"><label>Outcome executor contract</label><input value={executor} onChange={(e) => setExecutor(e.target.value.trim())} placeholder="optional: 0x… implements onFinalize(id, winner, tally)" /><div className="hint">Binds the result to an on-chain action when the election finalizes (Stocks uses this). Gas-capped and retryable.</div></div>
         </details>
-        {query.get('prizes') === '1' ? <PrizePanel /> : null}
+        <div className="field">
+          <label className="row" style={{ gap: 8, cursor: 'pointer' }}>
+            <input type="checkbox" checked={showPrizes} onChange={(e) => setShowPrizes(e.target.checked)} style={{ width: 'auto' }} data-testid="prizes-toggle" />
+            Add first, last, lucky and random prizes
+          </label>
+          <div className="hint">Set before the election goes live. Lucky voter numbers are locked on-chain and pay out the moment that voter arrives.</div>
+        </div>
+        {showPrizes ? <PrizePanel /> : null}
         {problems.length ? <ul className="small err" style={{ paddingLeft: 18 }}>{problems.map((p) => <li key={p}>{p}</li>)}</ul> : null}
         <ActionButton className="btn block" tx={tx} disabled={problems.length > 0} onRun={async (s) => {
           // upload images first (no gas, no wallet): then a small JSON blob maps option index -> image and becomes the on-chain metaURI

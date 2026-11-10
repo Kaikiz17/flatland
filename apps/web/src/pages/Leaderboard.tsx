@@ -26,7 +26,7 @@ export function Leaderboard() {
       <div className="grid g4">
         <Stat label="$WIF burned" value={`🔥 ${compactWif(t.wifBurned)}`} />
         <Stat label="Elections burn" value={compactWif(t.electionBurned)} />
-        <Stat label="Rails burn" value={compactWif(t.gateBurned)} />
+        <Stat label="Sign burn" value={compactWif(t.gateBurned)} />
         <Stat label="Buyback burn" value={compactWif(t.buybackBurned)} sub="from basket fees" />
       </div>
       <div className="grid g2" style={{ marginTop: 18, alignItems: 'start' }}>

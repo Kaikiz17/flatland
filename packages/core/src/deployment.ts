@@ -16,4 +16,6 @@ export interface Deployment {
   basket: Address;
   accountFactory: Address;
   paymaster: Address;
+  /** Set after PrizeRules is deployed. Unset → tallier payLucky is a no-op. */
+  prizeRules?: Address;
 }

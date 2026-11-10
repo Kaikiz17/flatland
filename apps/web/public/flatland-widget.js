@@ -3,7 +3,7 @@
  *
  *   <script src="https://YOUR-FLATLAND/flatland-widget.js" data-gate="3" data-title="Sign the petition"></script>
  *
- * data-gate      required  gate id from the Rails page
+ * data-gate      required  gate id from the Sign page
  * data-title     optional  heading (titles live in events, not storage)
  * data-label     optional  button text (default "Send 1 $WIF to act")
  * data-callback  optional  name of a global function(result) called after a successful act

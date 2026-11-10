@@ -16,8 +16,8 @@ import { Score } from './pages/Score';
 
 const NAV = [
   ['elections', 'Elections', 'M4 5h16v3H4zM4 11h16v3H4zM4 17h10v3H4z'],
-  ['basket', 'People’s Basket', 'M3 9h18l-2 11H5zM8 9l3-5M16 9l-3-5'],
-  ['rails', 'Rails', 'M5 3v18M19 3v18M5 8h14M5 16h14'],
+  ['basket', 'Stocks', 'M3 9h18l-2 11H5zM8 9l3-5M16 9l-3-5'],
+  ['rails', 'Sign', 'M5 3v18M19 3v18M5 8h14M5 16h14'],
   ['leaderboard', 'Board', 'M5 20V10h4v10zM10 20V4h4v16zM15 20v-7h4v7z'],
   ['create', 'Create', 'M12 5v14M5 12h14'],
 ] as const;
@@ -58,9 +58,9 @@ export function App() {
       <main><div className="wrap">{error && snap ? <div className="banner small">Connection hiccup — showing the last data. ({error})</div> : null}{view}</div></main>
       <footer className="foot">
         <div className="wrap grid g3">
-          <div><div className="row"><Logo size={28} /><b>Flatland</b></div><p className="small muted" style={{ marginTop: 8 }}>Built on the World is Fair rules, open to everyone. An open protocol that extends World is Fair with permissionless elections, executable outcomes and plug-in rails.</p></div>
+          <div><div className="row"><Logo size={28} /><b>Flatland</b></div><p className="small muted" style={{ marginTop: 8 }}>Built on the World is Fair rules, open to everyone. An open protocol that extends World is Fair with permissionless elections, executable outcomes and Sign.</p></div>
           <div className="small"><b>Trust model</b><p className="muted">Wallet votes are fully on-chain. “Just send 1 $WIF” votes are attested by an indexer with a public audit export, a challenge-by-burn window, and on-chain votes always standing.</p></div>
-          <div className="small"><b>Links</b><p><a href="#/build">Embed the rails · API · Agent (MCP)</a><br /><a href={cfg?.dexUrl ?? '#'} target="_blank" rel="noreferrer">World is Flat</a> · <a href={cfg?.explorer ?? '#'} target="_blank" rel="noreferrer">Explorer</a></p></div>
+          <div className="small"><b>Links</b><p><a href="#/build">Embed Sign · API · Agent (MCP)</a><br /><a href={cfg?.dexUrl ?? '#'} target="_blank" rel="noreferrer">World is Flat</a> · <a href={cfg?.explorer ?? '#'} target="_blank" rel="noreferrer">Explorer</a></p></div>
         </div>
       </footer>
       <nav className="tabbar" aria-label="Main">
