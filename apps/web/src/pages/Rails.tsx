@@ -8,6 +8,7 @@ import { ActionButton, Copy, Empty, TxStatus, useTx } from '../components/ui';
 import { ago, short, wif } from '../lib/format';
 import { Steps } from '../components/Steps';
 import { SignedCard } from '../components/SignedCard';
+import { CreatorPassPanel } from '../components/CreatorPassPanel';
 
 const KINDS = ['Petition', 'RSVP', 'Allowlist', 'Access gate'];
 const KIND_ICON = ['✍️', '🎟️', '📜', '🔑'];
@@ -64,6 +65,7 @@ function GateCard({ g, focus }: { g: GateView; focus: boolean }) {
           {g.actors.length === 0 ? <p className="muted small">No one yet.</p> : [...g.actors].reverse().map((a) => <div key={a.position} className="small row between" style={{ borderBottom: '1px dashed var(--line)', padding: '4px 0' }}><span className="mono">#{a.position + 1} {short(a.who)}</span><span className="muted">{ago(a.ts)}</span></div>)}
         </div>
       ) : null}
+      <CreatorPassPanel kind="gate" id={String(g.id)} creator={g.creator} />
     </div>
   );
 }

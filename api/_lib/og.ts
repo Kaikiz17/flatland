@@ -102,5 +102,5 @@ export async function svgToPng(svg: string, fontFiles: string[]): Promise<Uint8A
   }
 }
 
-export type { VotedCardInput, SignedCardInput } from './poster.ts';
-export { votedSvg, votedPoster, signedSvg, signedPoster } from './poster.ts';
+export type { VotedCardInput, SignedCardInput, PrivatePassInput, StocksCardInput } from './poster.ts';
+export { votedSvg, votedPoster, signedSvg, signedPoster, privatePoster, privateSvg, stocksPoster, stocksSvg, uniqueMotif } from './poster.ts';

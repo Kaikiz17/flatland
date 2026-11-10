@@ -13,6 +13,7 @@ interface Env {
   RPC_URL?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_WEBHOOK_SECRET?: string;
+  PASS_SECRET?: string;
 }
 
 const STALE_MS = 45 * 60_000;
@@ -74,6 +75,7 @@ export default {
         kv: env.KV,
         TELEGRAM_BOT_TOKEN: env.TELEGRAM_BOT_TOKEN,
         TELEGRAM_WEBHOOK_SECRET: env.TELEGRAM_WEBHOOK_SECRET,
+        PASS_SECRET: env.PASS_SECRET,
         APP_URL: url.origin,
         RPC_URL: env.RPC_URL ?? 'https://4663.rpc.thirdweb.com',
         deployment: deployment as any,

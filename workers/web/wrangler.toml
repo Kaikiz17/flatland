@@ -11,6 +11,7 @@ workers_dev = true
 enabled = true
 
 [vars]
+# PASS_SECRET is a Worker secret (HMAC for private pass IDs). Never put it here.
 # RPC_URL = "https://<keyed endpoint, e.g. Alchemy>"   # optional, tried first (use a secret for keyed URLs)
 
 [[kv_namespaces]]

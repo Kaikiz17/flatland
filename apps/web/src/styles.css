@@ -194,3 +194,25 @@ table.t td { padding: 9px 8px; border-bottom: 1px dashed var(--line); }
 .luckyhit-card { max-width: 420px; width: 100%; background: linear-gradient(180deg, #1a2c4a, #10203a); color: var(--paper); border: 3px solid var(--gold); border-radius: 24px; box-shadow: 0 0 0 6px #f2b70533, 8px 8px 0 #0006; padding: 28px 22px; }
 .luckyhit-card h2 { color: #ffd966; }
 .luckyhit .sharecard-seal { position: relative; transform: none; left: auto; }
+
+.pass-warn { background: #3a0a10; color: #ffd0d0; border: 2px solid #c41e3a; border-radius: 12px; padding: 10px 12px; font-size: .92rem; margin: 12px 0; }
+.private-pass { margin-top: 8px; }
+.pass-list { max-height: 280px; overflow: auto; }
+
+.ledger { margin-top: 18px; padding: 18px; border: 2px solid #f2b70555; border-radius: 20px; background: linear-gradient(180deg, #161022, #0c0a14); color: var(--paper, #fffaf0); }
+.ledger-head { margin: 14px 0 8px; }
+.ledger-head .kicker { letter-spacing: 5px; font-size: .72rem; font-weight: 800; color: #f2b705; }
+.ledger-head h3 { margin: 6px 0 0; font-size: 1.45rem; }
+.ledger-badge { display: inline-block; margin-left: 8px; background: #ff5a36; color: #fffaf0; font-size: .7rem; font-weight: 800; letter-spacing: 1.5px; padding: 3px 9px; border-radius: 99px; vertical-align: middle; text-transform: uppercase; }
+.ledger-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px 16px; margin: 12px 0 16px; padding: 12px 14px; background: #fff8e810; border-left: 4px solid #f2b705; border-radius: 8px; font-size: .88rem; }
+.ledger-info b { display: block; font-size: .68rem; letter-spacing: 1.2px; text-transform: uppercase; color: #f2b705; margin-bottom: 2px; }
+.ledger-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.ledger-search, .ledger-verify input { flex: 1; min-width: 160px; }
+.ledger-verify { display: flex; gap: 8px; flex: 1; min-width: 240px; }
+.ledger-wrap { max-height: 420px; overflow: auto; border-radius: 12px; border: 1px solid #f2b70533; }
+.ledger-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+.ledger-table thead th { position: sticky; top: 0; background: #1c1528; color: #f2b705; text-transform: uppercase; letter-spacing: 1px; font-size: .68rem; text-align: left; padding: 10px 8px; z-index: 1; }
+.ledger-table td { padding: 9px 8px; border-bottom: 1px solid #ffffff12; vertical-align: top; }
+.ledger-table tbody tr:nth-child(even) { background: #ffffff08; }
+.ledger-table tbody tr:hover { background: #f2b70518; }
+.ledger-table button { margin-left: 6px; }

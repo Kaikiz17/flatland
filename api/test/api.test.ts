@@ -3,6 +3,9 @@ import { decodeFunctionData } from 'viem';
 import { handle } from '../_lib/handler.ts';
 import { ogSvg, wrap, votedSvg, votedPoster, signedSvg, signedPoster, signedHeadline } from '../_lib/og.ts';
 import { flatlandAbi } from '../../packages/core/src/abis.ts';
+import { privateKeyToAccount } from 'viem/accounts';
+import { issueChallenge, makePassId, PASS_RE } from '../_lib/pass.ts';
+
 
 const A = (n: number) => ('0x' + n.toString(16).padStart(40, '0')) as `0x${string}`;
 const dep = { chainId: 4663, deployBlock: 1, wif: A(1), usdg: A(2), tallier: A(3), entropy: A(4), standing: A(5), flatland: A(6), boxImpl: A(7), gate: A(8), participation: A(9), buyback: A(10), basket: A(11), accountFactory: A(12), paymaster: A(13) };
@@ -142,5 +145,95 @@ describe('MCP', () => {
   it('rejects bad input as a tool error, not a crash', async () => {
     const r: any = await (await rpc({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'prepare_create_election', arguments: { title: 'x', options: ['only one'], durationHours: 1 } } })).json();
     expect(r.result.isError).toBe(true);
+  });
+});
+
+
+describe('Pass IDs + private Sign routes', () => {
+  const secret = 'test-pass-secret-do-not-use-live';
+  const account = privateKeyToAccount(('0x' + '11'.repeat(32)) as `0x${string}`);
+  const who = account.address;
+  const tx = ('0x' + 'ab'.repeat(32)) as `0x${string}`;
+  const g = { ...gate, creator: who, actors: [{ who, position: 0, ts: now - 10, tx, block: 42 }], count: 1, created: now - 86400 };
+  const snap2 = { ...snap, gates: [g] };
+  const mem = new Map<string, string>();
+  const envP = {
+    APP_URL: 'https://flat.example',
+    PASS_SECRET: secret,
+    getSnapshot: async () => snap2,
+    kv: { get: async (k: string) => mem.get(k) ?? null, put: async (k: string, v: string) => { mem.set(k, v); } },
+  };
+  const req = (p: string, init?: RequestInit) => handle(new Request('https://flat.example' + p, init), envP);
+
+  it('makes a stable formatted pass ID', async () => {
+    const a = await makePassId(secret, 4663, dep.gate, 'gate:1', who, tx);
+    const b = await makePassId(secret, 4663, dep.gate, 'gate:1', who, tx);
+    const c = await makePassId(secret, 4663, dep.gate, 'gate:1', who, ('0x' + 'cd'.repeat(32)));
+    expect(a).toMatch(PASS_RE);
+    expect(a).toBe(b);
+    expect(c).not.toBe(a);
+  });
+
+  it('public card never shows a pass ID; unique seeds differ', async () => {
+    const a = await (await req('/api/card/signed/1.svg?x=' + tx)).text();
+    const b = await (await req('/api/card/signed/1.svg?x=' + ('0x' + 'cd'.repeat(32)))).text();
+    expect(a).toContain('width="1080"');
+    expect(a).not.toMatch(/FLAT-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}/);
+    expect(a).not.toContain("Don't share this publicly");
+    expect(a).not.toBe(b);
+  });
+
+  it('private signed card requires a signature; vote/stocks private routes are gone', async () => {
+    expect((await req('/api/card/private/signed/1.svg')).status).toBe(401);
+    expect((await req('/api/card/private/voted/1/0.svg')).status).toBe(404);
+    expect((await req('/api/card/private/stocks/bought.svg')).status).toBe(404);
+  });
+
+  it('public verify returns valid + gate, never a wallet', async () => {
+    const id = await makePassId(secret, 4663, dep.gate, 'gate:1', who, tx);
+    const j: any = await (await req('/api/pass/verify?id=' + id)).json();
+    expect(j).toEqual({ valid: true, kind: 'sign', id: '1', scope: 'gate:1' });
+    expect(JSON.stringify(j)).not.toMatch(/0x[0-9a-fA-F]{40}/);
+  });
+
+  it('creator list and verify return rows + wallet after a proof; name can be saved', async () => {
+    const { message } = await issueChallenge(secret, who, 'creator:gate:1');
+    const signature = await account.signMessage({ message });
+    const list = await req('/api/pass/list', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message, signature, kind: 'gate', id: '1' }) });
+    const j: any = await list.json();
+    expect(list.status).toBe(200);
+    expect(j.title).toBe(g.title);
+    expect(j.total).toBe(1);
+    expect(j.burnedWif).toBe(1);
+    expect(j.rows[0].passId).toMatch(PASS_RE);
+    expect(j.rows[0].wallet.toLowerCase()).toBe(who.toLowerCase());
+    expect(j.rows[0].no).toBe(1);
+
+    const v: any = await (await req('/api/pass/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message, signature, id: j.rows[0].passId }) })).json();
+    expect(v.valid).toBe(true);
+    expect(v.wallet.toLowerCase()).toBe(who.toLowerCase());
+
+    const { message: m2 } = await issueChallenge(secret, who, 'private-pass');
+    const s2 = await account.signMessage({ message: m2 });
+    const named = await req('/api/pass/name', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message: m2, signature: s2, gateId: '1', name: 'Ada' }) });
+    expect(named.status).toBe(200);
+    const { message: m3 } = await issueChallenge(secret, who, 'creator:gate:1');
+    const s3 = await account.signMessage({ message: m3 });
+    const j2: any = await (await req('/api/pass/list', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message: m3, signature: s3, kind: 'gate', id: '1' }) })).json();
+    expect(j2.rows[0].name).toBe('Ada');
+  });
+
+  it('list rejects a missing signature', async () => {
+    expect((await req('/api/pass/list', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind: 'gate', id: '1' }) })).status).toBe(401);
+  });
+
+  it('stocks public cards exist and have no pass ID', async () => {
+    const bought = await (await req('/api/card/stocks/bought.svg?w=' + who + '&t=' + now)).text();
+    expect(bought).toContain('I BOUGHT');
+    expect(bought).toContain('width="1080"');
+    expect(bought).not.toMatch(/FLAT-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}/);
+    const profit = await (await req('/api/card/stocks/profit.svg?value=$120&cost=$100&pct=+20%')).text();
+    expect(profit).toContain('IN PROFIT');
+    expect(profit).toContain('VALUE $120');
   });
 });

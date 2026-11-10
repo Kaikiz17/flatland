@@ -69,7 +69,9 @@ export interface GateView {
   cost: string;
   cap: number;
   count: number;
-  actors: { who: Address; position: number; ts: number }[];
+  actors: { who: Address; position: number; ts: number; tx?: Hex; block?: number }[];
+  /** Block timestamp of GateCreated, if indexed. */
+  created?: number;
 }
 export interface BasketView {
   address: Address;
@@ -87,6 +89,8 @@ export interface BasketView {
   governance: Address;
   /** vault actions read from logs: weights applied (TargetsSet), rebalances and the individual Stock Token trades */
   events?: { kind: 'targets' | 'rebalanced' | 'traded'; tx: string; block: number; ts: number; epoch?: number; token?: string; symbol?: string; buy?: boolean; usdg?: string; tokenAmount?: string }[];
+  /** Wallet deposits and redeems, indexed from vault logs (capped). Used for Stocks cards and pass IDs. */
+  flows?: { kind: 'deposit' | 'redeem' | 'redeem-in-kind'; who: Address; usdg?: string; shares: string; tx: Hex; block: number; ts: number }[];
 }
 export interface Snapshot {
   version: 1;
@@ -336,14 +340,14 @@ export async function readSnapshot(client: PublicClient, dep: Deployment, opts: 
 
   // ── gates ──
   const gates = new Map<number, GateView>();
-  await prefetchTs(client, gateLogs.filter((l) => l.eventName === 'Acted').map((l) => l.blockNumber!));
+  await prefetchTs(client, gateLogs.filter((l) => l.eventName === 'Acted' || l.eventName === 'GateCreated').map((l) => l.blockNumber!));
   for (const l of gateLogs) {
     const a = l.args as any;
     if (l.eventName === 'GateCreated') {
-      gates.set(Number(a.id), { id: Number(a.id), creator: a.creator, kind: Number(a.kind), title: a.title, metaURI: a.metaURI, start: Number(a.start), end: Number(a.end), cost: a.cost.toString(), cap: Number(a.cap), count: 0, actors: [] });
+      gates.set(Number(a.id), { id: Number(a.id), creator: a.creator, kind: Number(a.kind), title: a.title, metaURI: a.metaURI, start: Number(a.start), end: Number(a.end), cost: a.cost.toString(), cap: Number(a.cap), count: 0, actors: [], created: await tsOf(client, l.blockNumber!) });
     } else if (l.eventName === 'Acted') {
       const g = gates.get(Number(a.id));
-      if (g) { g.count++; g.actors.push({ who: a.who, position: Number(a.position), ts: await tsOf(client, l.blockNumber!) }); }
+      if (g) { g.count++; g.actors.push({ who: a.who, position: Number(a.position), ts: await tsOf(client, l.blockNumber!), tx: l.transactionHash!, block: Number(l.blockNumber) }); }
     }
   }
 
@@ -423,8 +427,18 @@ export async function readSnapshot(client: PublicClient, dep: Deployment, opts: 
       else if (l.eventName === 'Rebalanced') evs.push({ kind: 'rebalanced', ...base });
       else { const as = assets.find((x) => x.token.toLowerCase() === String(a.token).toLowerCase()); evs.push({ kind: 'traded', token: a.token, symbol: as?.symbol, buy: a.buy, usdg: a.usdgAmount.toString(), tokenAmount: a.tokenAmount.toString(), ...base }); }
     }
+    const flows: NonNullable<BasketView['flows']> = [];
+    const flowLogs = vaultLogs.filter((l) => l.eventName === 'Deposited' || l.eventName === 'Redeemed' || l.eventName === 'RedeemedInKind').slice(-200);
+    await prefetchTs(client, flowLogs.map((l) => l.blockNumber as bigint));
+    for (const l of flowLogs) {
+      const a = l.args as any;
+      const base = { who: a.who, tx: l.transactionHash as Hex, block: Number(l.blockNumber), ts: blockTsCache.get(l.blockNumber as bigint) ?? 0 };
+      if (l.eventName === 'Deposited') flows.push({ kind: 'deposit', usdg: a.usdg.toString(), shares: a.shares.toString(), ...base });
+      else if (l.eventName === 'Redeemed') flows.push({ kind: 'redeem', usdg: a.usdgOut.toString(), shares: a.shares.toString(), ...base });
+      else flows.push({ kind: 'redeem-in-kind', shares: a.shares.toString(), ...base });
+    }
     basket = {
-      address: dep.basket, epochs, assets, events: evs,
+      address: dep.basket, epochs, assets, events: evs, flows,
       pendingFees: need(3).toString(),
       totalFeesBurned: need(4).toString(),
       totalSupply: need(5).toString(),

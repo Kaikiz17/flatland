@@ -45,6 +45,8 @@ export interface VotedCardInput {
   ts?: number;
   /** Option image as a data URI or same-origin / absolute href (/img/<hash>). */
   image?: string;
+  /** Public uniqueness seed: vote tx hash (preferred) or wallet. Never a pass ID. */
+  seed?: string;
 }
 export interface SignedCardInput {
   kind: number;
@@ -54,6 +56,7 @@ export interface SignedCardInput {
   headline?: string;
   wallet?: string;
   ts?: number;
+  seed?: string;
 }
 
 type Theme = { bg: string; glow: string; accent: string; ink: string; foil: string; tag: string; mid: string };
@@ -75,6 +78,43 @@ const STARS: [number, number, number][] = [
 
 const FONT = 'Montserrat, Liberation Sans, Helvetica, Arial, sans-serif';
 const MONO = 'DM Mono, Roboto Mono, ui-monospace, Liberation Mono, Courier New, monospace';
+
+export function seedBytes(seed: string): number[] {
+  const t = seed.startsWith('0x') ? seed.slice(2) : seed;
+  const b: number[] = [];
+  if (/^[0-9a-fA-F]{16,}$/.test(t)) {
+    for (let i = 0; i + 1 < t.length && b.length < 32; i += 2) b.push(parseInt(t.slice(i, i + 2), 16));
+    while (b.length < 32) b.push(b[b.length % 16] ^ b.length);
+    return b;
+  }
+  let h = 2166136261;
+  for (let i = 0; i < 32; i++) b.push(0);
+  for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619); b[i % 32] ^= (h >>> (i % 24)) & 255; }
+  return b;
+}
+
+/** Unique public-card flourish derived from a tx hash or wallet. Never renders a pass ID. */
+export function uniqueMotif(seed: string | undefined, id: string, w: number, h: number): string {
+  if (!seed) return '';
+  const b = seedBytes(seed);
+  const hue = b[0] * 1.4;
+  const stars = Array.from({ length: 10 }, (_, i) => {
+    const x = 80 + ((b[i] * 17 + b[(i + 3) % 32] * 3) % Math.max(40, w - 160));
+    const y = 90 + ((b[i + 8] * 13 + b[(i + 11) % 32]) % Math.max(40, Math.floor(h * 0.42)));
+    const r = 1.4 + (b[i] % 5) * 0.5;
+    const rot = (b[i] * 11) % 360;
+    return `<path d="M${x} ${y - r * 2.2} L${x + r * 0.5} ${y - r * 0.3} L${x + r * 2} ${y} L${x + r * 0.5} ${y + r * 0.3} L${x} ${y + r * 2.2} L${x - r * 0.5} ${y + r * 0.3} L${x - r * 2} ${y} L${x - r * 0.5} ${y - r * 0.3} Z" fill="hsl(${(hue + i * 18) % 360} 90% 70%)" opacity=".85" transform="rotate(${rot} ${x} ${y})"/>`;
+  }).join('');
+  const pts = Array.from({ length: 6 }, (_, i) => {
+    const x = (w * 0.18) + (b[16 + i] / 255) * w * 0.64;
+    const y = (h * 0.22) + (b[22 + i] / 255) * h * 0.28;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const line = `<polyline points="${pts.join(' ')}" fill="none" stroke="hsl(${hue} 90% 65%)" stroke-width="1.4" opacity=".45"/>`;
+  const dots = pts.map((p, i) => { const [x, y] = p.split(','); return `<circle cx="${x}" cy="${y}" r="${2 + (b[i] % 3)}" fill="hsl(${(hue + 40 + i * 20) % 360} 90% 75%)" opacity=".9"/>`; }).join('');
+  return `<g id="motif-${id}" pointer-events="none">${line}${dots}${stars}</g>`;
+}
+
 
 function stars(w: number, h: number) {
   const sx = w / 1080, sy = Math.min(1, h / 1080);
@@ -301,6 +341,7 @@ function voteArt(i: VotedCardInput, wide: boolean): string {
   ${sharedHoloDef()}
   ${defs(id, w, h, t)}
   ${confetti(-1, w, h)}
+  ${uniqueMotif(i.seed ?? i.wallet, id, w, h)}
   <rect width="${w}" height="${h}" fill="url(#orb-${id})" pointer-events="none"/>
   ${disc(id, discC[0], discC[1], discC[2], i.image)}
   ${foil(w, h, id)}
@@ -342,6 +383,7 @@ function signArt(i: SignedCardInput, wide: boolean): string {
   ${sharedHoloDef()}
   ${defs(id, w, h, t)}
   ${confetti(i.kind, w, h)}
+  ${uniqueMotif(i.seed ?? i.wallet, id, w, h)}
   <rect width="${w}" height="${h}" fill="url(#orb-${id})" pointer-events="none"/>
   ${disc(id, discC[0], discC[1], discC[2])}
   ${foil(w, h, id)}
@@ -357,5 +399,133 @@ function signArt(i: SignedCardInput, wide: boolean): string {
   ${metaRow(wide ? 820 : 540, wide ? 430 : 970, i.wallet, i.ts)}
   ${fireBadge(wide ? 1040 : 900, wide ? 560 : 970, burn)}
   ${hiddenPos}
+</svg>`;
+}
+
+
+export type PassRole = 'voted' | 'signed' | 'bought' | 'sold' | 'cashed' | 'profit';
+
+export interface PrivatePassInput {
+  role: PassRole;
+  title: string;
+  wallet: string;
+  passId: string;
+  txHash?: string;
+  block?: number;
+  ts?: number;
+  detail?: string;
+  kind?: number;
+  burnedWif?: number;
+  profit?: { value: string; cost: string; pct: string };
+  seed?: string;
+}
+
+const ROLE_HERO: Record<PassRole, string> = {
+  voted: 'I VOTED', signed: 'I SIGNED', bought: 'I BOUGHT', sold: 'I SOLD', cashed: 'I CASHED OUT', profit: 'IN PROFIT',
+};
+
+function roleTheme(role: PassRole, kind?: number): Theme {
+  if (role === 'signed') return SIGN_THEMES[kind ?? 0] ?? SIGN_THEMES[0];
+  if (role === 'voted') return VOTED;
+  return { bg: '#04150e', glow: '#3ee0a0', accent: '#f2b705', ink: '#f3fff8', foil: '#f2b705', tag: 'STOCKS', mid: '#0a2a1c' };
+}
+
+function ticker(w: number, h: number, b: number[], color: string) {
+  const bits: string[] = [];
+  for (let i = 0; i < 14; i++) {
+    const y = 140 + i * 62 + (b[i % 32] % 18);
+    if (y > h - 80) break;
+    const x = -40 + (b[(i + 4) % 32] % 80);
+    bits.push(`<text x="${x}" y="${y}" font-size="11" font-weight="700" fill="${color}" opacity=".14" letter-spacing="6" font-family="${MONO}">${'WIF · STOCKS · USDG · SHARE · '.repeat(8)}</text>`);
+  }
+  return bits.join('');
+}
+
+function privateArt(i: PrivatePassInput, wide: boolean): string {
+  const w = wide ? 1200 : 1080, h = wide ? 630 : 1080;
+  const t = roleTheme(i.role, i.kind);
+  const id = `pp${i.role}${wide ? 'w' : 'q'}`;
+  const hero = ROLE_HERO[i.role];
+  const date = i.ts ? formatCardDate(i.ts) : '';
+  const when = [i.block ? `BLOCK ${i.block}` : '', date].filter(Boolean).join('  ·  ');
+  const tx = i.txHash ? shortTxSafe(i.txHash) : '';
+  const stocks = i.role === 'bought' || i.role === 'sold' || i.role === 'cashed' || i.role === 'profit';
+  const b = seedBytes(i.seed ?? i.txHash ?? i.wallet);
+  const ax = wide ? 80 : 540;
+  const anchor: 'middle' | 'start' = wide ? 'start' : 'middle';
+  const profit = i.profit ? `<text x="${wide ? 80 : 540}" y="${wide ? 300 : 430}" text-anchor="${anchor}" font-size="26" font-weight="800" fill="#3ee0a0">VALUE ${esc(i.profit.value)}  vs  DEPOSIT ${esc(i.profit.cost)}  ·  ${esc(i.profit.pct)}</text>` : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" font-family="${FONT}">
+  ${sharedHoloDef()}
+  ${defs(id, w, h, t)}
+  ${stocks ? ticker(w, h, b, t.foil) : ''}
+  ${uniqueMotif(i.seed ?? i.txHash ?? i.wallet, id, w, h)}
+  ${foil(w, h, id)}
+  ${wordmark(wide ? 200 : 540, wide ? 62 : 72, 'PRIVATE PASS')}
+  <rect x="${wide ? 70 : 70}" y="${wide ? 88 : 100}" width="${wide ? 1060 : 940}" height="40" rx="12" fill="#c41e3a"/>
+  <text x="${wide ? 600 : 540}" y="${wide ? 115 : 127}" text-anchor="middle" font-size="15" font-weight="800" fill="#fffaf0">Don&apos;t share this publicly. Share it privately for verification only.</text>
+  <text x="${ax}" y="${wide ? 170 : 230}" text-anchor="${anchor}" font-size="${wide ? 64 : 96}" font-weight="800" fill="url(#hero-${id})" stroke="#041108" stroke-width="6" paint-order="stroke fill" filter="url(#glow-${id})">${hero}</text>
+  <text x="${ax}" y="${wide ? 215 : 290}" text-anchor="${anchor}" font-size="${wide ? 18 : 22}" font-weight="700" fill="#e8dcc8">${esc(i.title.slice(0, wide ? 48 : 42))}${i.title.length > (wide ? 48 : 42) ? '…' : ''}</text>
+  ${i.detail ? `<text x="${ax}" y="${wide ? 250 : 340}" text-anchor="${anchor}" font-size="${wide ? 22 : 28}" font-weight="800" fill="${t.accent}">${esc(i.detail)}</text>` : ''}
+  ${profit}
+  <text x="${ax}" y="${wide ? 360 : 520}" text-anchor="${anchor}" font-size="${wide ? 18 : 22}" font-weight="700" fill="#fffaf0" font-family="${MONO}">${esc(i.wallet)}</text>
+  ${tx ? `<text x="${ax}" y="${wide ? 394 : 568}" text-anchor="${anchor}" font-size="18" font-weight="700" fill="#b5bfd3" font-family="${MONO}">TX  ${esc(tx)}${when ? '   ·   ' + esc(when) : ''}</text>` : (when ? `<text x="${ax}" y="${wide ? 394 : 568}" text-anchor="${anchor}" font-size="18" font-weight="700" fill="#b5bfd3" font-family="${MONO}">${esc(when)}</text>` : '')}
+  <g>
+    <rect x="${wide ? 80 : 140}" y="${wide ? 470 : 700}" width="${wide ? 700 : 800}" height="${wide ? 110 : 150}" rx="22" fill="#0b1220" stroke="url(#holo-${id})" stroke-width="3"/>
+    <text x="${wide ? 430 : 540}" y="${wide ? 500 : 742}" text-anchor="middle" font-size="13" font-weight="800" fill="#ffb199" letter-spacing="4">UNIQUE PASS ID</text>
+    <text x="${wide ? 430 : 540}" y="${wide ? 538 : 798}" text-anchor="middle" font-size="${wide ? 32 : 44}" font-weight="800" fill="#fffaf0" font-family="${MONO}" letter-spacing="2">${esc(i.passId)}</text>
+    <text x="${wide ? 430 : 540}" y="${wide ? 556 : 830}" text-anchor="middle" font-size="12" font-weight="700" fill="#ffd0d0">Don&apos;t share this publicly. Share it privately for verification only.</text>
+  </g>
+  ${seal(wide ? 1080 : 540, wide ? 560 : 980, id, t.foil, wide ? 0.62 : 0.78)}
+</svg>`;
+}
+
+function shortTxSafe(h: string) {
+  return h.length >= 12 ? `${h.slice(0, 8)}…${h.slice(-6)}` : h;
+}
+
+export function privatePoster(i: PrivatePassInput): string { return privateArt(i, false); }
+export function privateSvg(i: PrivatePassInput): string { return privateArt(i, true); }
+
+export interface StocksCardInput {
+  role: Exclude<PassRole, 'signed'>;
+  title?: string;
+  detail?: string;
+  burnedWif?: number;
+  wallet?: string;
+  ts?: number;
+  seed?: string;
+  profit?: { value: string; cost: string; pct: string };
+}
+
+export function stocksPoster(i: StocksCardInput): string { return stocksArt(i, false); }
+export function stocksSvg(i: StocksCardInput): string { return stocksArt(i, true); }
+
+function stocksArt(i: StocksCardInput, wide: boolean): string {
+  const w = wide ? 1200 : 1080, h = wide ? 630 : 1080;
+  const t: Theme = { bg: '#04150e', glow: '#3ee0a0', accent: '#f2b705', ink: '#f3fff8', foil: '#f2b705', tag: 'STOCKS', mid: '#0a2a1c' };
+  const id = `st${i.role}${wide ? 'w' : 'q'}`;
+  const hero = ROLE_HERO[i.role];
+  const b = seedBytes(i.seed ?? i.wallet ?? 'stocks');
+  const ax = wide ? 500 : 540;
+  const anchor: 'middle' | 'start' = wide ? 'start' : 'middle';
+  const title = i.title ?? 'Flatland Stocks';
+  const titles = wrap(title, wide ? 26 : 28, 2);
+  const discC = wide ? [250, 335, 170] : [540, 590, 200];
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" font-family="${FONT}">
+  ${sharedHoloDef()}
+  ${defs(id, w, h, t)}
+  ${ticker(w, h, b, t.foil)}
+  ${uniqueMotif(i.seed ?? i.wallet, id, w, h)}
+  <rect width="${w}" height="${h}" fill="url(#orb-${id})" pointer-events="none"/>
+  ${disc(id, discC[0], discC[1], discC[2])}
+  ${foil(w, h, id)}
+  ${wordmark(wide ? 720 : 540, wide ? 62 : 78, 'STOCKS')}
+  <text x="${ax}" y="${wide ? 175 : 210}" text-anchor="${anchor}" font-size="${wide ? 72 : 104}" font-weight="800" fill="url(#hero-${id})" stroke="#041108" stroke-width="${wide ? 5 : 7}" paint-order="stroke fill" filter="url(#glow-${id})">${hero}</text>
+  ${titles.map((l, k) => `<text x="${ax}" y="${(wide ? 220 : 270) + k * (wide ? 32 : 38)}" text-anchor="${anchor}" font-size="${wide ? 22 : 28}" font-weight="700" fill="#d7f5e6">${esc(l)}</text>`).join('')}
+  ${i.detail ? ribbon(wide ? 250 : 540, wide ? 530 : 825, i.detail, t.accent, '#041108', wide ? 400 : 600) : ''}
+  ${i.profit ? `<text x="${ax}" y="${wide ? 300 : 360}" text-anchor="${anchor}" font-size="${wide ? 22 : 26}" font-weight="800" fill="#3ee0a0">${esc(`VALUE ${i.profit.value}  vs  ${i.profit.cost}  ·  ${i.profit.pct}`)}</text>` : ''}
+  ${metaRow(wide ? 820 : 540, wide ? 430 : 970, i.wallet, i.ts)}
+  ${i.burnedWif != null ? fireBadge(wide ? 1040 : 900, wide ? 560 : 970, burnTxt(i.burnedWif)) : ''}
+  ${seal(wide ? 520 : 175, wide ? 560 : 968, id, t.foil, wide ? 0.72 : 0.92)}
 </svg>`;
 }

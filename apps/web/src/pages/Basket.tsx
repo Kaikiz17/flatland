@@ -4,6 +4,7 @@ import { basketVaultAbi, erc20Abi } from '@flatland/core';
 import { getState, useApp } from '../lib/store';
 import { useWallet } from '../lib/wallet';
 import { basketBuyback, basketCall, basketDeposit, basketNominate, basketRedeem } from '../lib/actions';
+import { StocksCard } from '../components/StocksCard';
 import { ActionButton, TxStatus, color, useNow, useTx, Stat, Empty } from '../components/ui';
 import { compactWif, usdg, until } from '../lib/format';
 import { Steps } from '../components/Steps';
@@ -87,6 +88,7 @@ export function Basket() {
             <>
               <p>Week <b>#{last.epoch}</b> — <span className={`tag ${lastEl.status}`}>{lastEl.status}</span></p>
               <a className="btn block" href={`#/e/${lastEl.id}`}>{lastEl.status === 'open' ? 'Vote on which stocks →' : 'View result →'}</a>
+              <StocksVoteCard e={lastEl} />
             </>
           ) : <p className="muted">No vote yet. <a href="#/create?template=basket"><b>Start the first one →</b></a></p>}
           <hr />
@@ -152,7 +154,42 @@ function Position({ pps }: { pps: number | null }) {
       {mode === 'in' && room !== null && room < (1n << 200n) ? <p className="small" style={{ fontWeight: 650 }}>Beta cap: you can deposit up to <b>${usdg(room)}</b> more{capped ? <span className="err"> — that amount is over your limit.</span> : '.'}</p> : null}
       <ActionButton className="btn block" tx={tx} disabled={raw === 0n || over || capped} onRun={(s) => (mode === 'in' ? basketDeposit(raw, s) : basketRedeem(raw, inKind, s))}>{over ? 'Amount exceeds balance' : capped ? 'Over the beta deposit cap' : mode === 'in' ? 'Deposit' : 'Redeem'}</ActionButton>
       <TxStatus tx={tx} />
+      {tx.hash && !tx.busy ? <StocksCard role={mode === 'in' ? 'bought' : inKind ? 'sold' : 'cashed'} title="Flatland Stocks" detail={mode === 'in' ? 'Deposited USDG' : inKind ? 'Redeemed in kind' : 'Cashed out USDG'} tx={tx.hash} ts={Math.floor(Date.now()/1000)} /> : null}
+      <StocksHistory pps={pps} shares={bal?.shares ?? null} />
     </div>
+  );
+}
+
+
+
+function StocksVoteCard({ e }: { e: { id: number; title: string; chainVotes: { voter: string; option: number; tx: string; ts: number }[]; depositVotes: { voter: string; option: number; tx: string; ts: number }[]; options: string[] } }) {
+  const w = useWallet();
+  if (!w.address) return null;
+  const lc = w.address.toLowerCase();
+  const v = e.chainVotes.find((x) => x.voter.toLowerCase() === lc) ?? e.depositVotes.find((x) => x.voter.toLowerCase() === lc);
+  if (!v) return null;
+  return <StocksCard role="voted" title={e.title} detail={`${e.options[v.option] ?? ''}`} tx={v.tx} ts={v.ts} />;
+}
+
+function StocksHistory({ pps, shares }: { pps: number | null; shares: bigint | null }) {
+  const w = useWallet();
+  const { snap } = useApp();
+  if (!w.address || !snap?.basket) return null;
+  const lc = w.address.toLowerCase();
+  const flows = (snap.basket.flows ?? []).filter((f) => f.who.toLowerCase() === lc);
+  const lastIn = [...flows].reverse().find((f) => f.kind === 'deposit');
+  const lastOut = [...flows].reverse().find((f) => f.kind === 'redeem' || f.kind === 'redeem-in-kind');
+  const dep = flows.filter((f) => f.kind === 'deposit').reduce((s, f) => s + BigInt(f.usdg ?? '0'), 0n);
+  const out = flows.filter((f) => f.kind === 'redeem').reduce((s, f) => s + BigInt(f.usdg ?? '0'), 0n);
+  const net = Number(dep - out) / 1e6;
+  const value = pps != null && shares != null ? Number(shares) / 1e18 * pps : null;
+  const profit = value != null && net > 0 && value > net ? { value: `$${value.toFixed(2)}`, cost: `$${net.toFixed(2)}`, pct: `+${(((value - net) / net) * 100).toFixed(1)}%` } : null;
+  return (
+    <>
+      {lastIn ? <StocksCard role="bought" title="Flatland Stocks" detail="Deposited USDG" tx={lastIn.tx} ts={lastIn.ts} /> : null}
+      {lastOut ? <StocksCard role={lastOut.kind === 'redeem-in-kind' ? 'sold' : 'cashed'} title="Flatland Stocks" tx={lastOut.tx} ts={lastOut.ts} /> : null}
+      {profit ? <StocksCard role="profit" title="Flatland Stocks" profit={profit} /> : null}
+    </>
   );
 }
 

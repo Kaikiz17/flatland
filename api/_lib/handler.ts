@@ -6,7 +6,7 @@
  *
  * Routes:  GET /api/stats · /api/elections · /api/elections/:id · /api/og/:id(.png) · /api/share/:id · POST /api/mcp (MCP)
  */
-import { createPublicClient, encodeFunctionData, http, parseUnits, type Address, type PublicClient } from 'viem';
+import { createPublicClient, encodeFunctionData, http, parseUnits, verifyMessage, type Address, type PublicClient } from 'viem';
 import { flatlandAbi, erc20Abi } from '../../packages/core/src/abis.ts';
 import { robinhood } from '../../packages/core/src/chain.ts';
 import { readSnapshot, type Snapshot, type ElectionView } from '../../packages/core/src/snapshot.ts';
@@ -14,7 +14,9 @@ import { analyzeElection, type Analysis } from '../../packages/core/src/analysis
 import { depositAddress } from '../../packages/core/src/deposit.ts';
 import { voteLinks } from '../../packages/core/src/votelink.ts';
 import type { Deployment } from '../../packages/core/src/deployment.ts';
-import { ogSvg, cardSvg, votedSvg, votedPoster, signedSvg, signedPoster, signedHeadline, svgToPng } from './og.ts';
+import { ogSvg, cardSvg, votedSvg, votedPoster, signedSvg, signedPoster, signedHeadline, svgToPng, privatePoster, privateSvg, stocksPoster, stocksSvg } from './og.ts';
+import { checkChallenge, issueChallenge, makePassId, PASS_RE } from './pass.ts';
+import type { PassRole } from './poster.ts';
 import { flatScore } from '../../packages/core/src/score.ts';
 import { loadMedia, type KVLike, type Media } from './media.ts';
 import { telegramCalls } from './telegram.ts';
@@ -36,6 +38,8 @@ export interface Env {
   /** Worker secrets (never logged). Telegram stays disabled until TELEGRAM_BOT_TOKEN is set. */
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_WEBHOOK_SECRET?: string;
+  /** Worker secret (never logged). HMAC key for verifiable private pass IDs. */
+  PASS_SECRET?: string;
 }
 
 type Full = Snapshot & { analysis?: Record<number, Analysis> };
@@ -269,7 +273,9 @@ export async function handle(req: Request, env: Env = {}): Promise<Response> {
         ?? (voterNo && voterNo > 0 && voterNo <= votes.length ? votes[voterNo - 1] : undefined);
       const hash = media?.images?.[String(opt)] ?? media?.images?.[opt];
       const image = (hash ? await embedImg(hash) : undefined) ?? (hash ? `${appUrl}/img/${hash}` : undefined);
-      const input = { title: e.title, letter: p.options[opt].letter, option: p.options[opt].name, burnedWif: burn, votes: p.options.reduce((a, o) => a + o.votes, 0), voterNo, wallet: q.wallet ?? ev?.voter, ts: q.ts ?? ev?.ts, image };
+      const rawX = url.searchParams.get('x') ?? '';
+      const seed = /^0x[0-9a-fA-F]{16,}$/.test(rawX) ? rawX : ev?.tx;
+      const input = { title: e.title, letter: p.options[opt].letter, option: p.options[opt].name, burnedWif: burn, votes: p.options.reduce((a, o) => a + o.votes, 0), voterNo, wallet: q.wallet ?? ev?.voter, ts: q.ts ?? ev?.ts, image, seed };
       return { e, p, svg: votedSvg(input), poster: votedPoster(input) };
     };
     const signedCard = (id: number, position?: number) => {
@@ -281,7 +287,9 @@ export async function handle(req: Request, env: Env = {}): Promise<Response> {
       const q = cardMeta(url.searchParams);
       const actor = (q.wallet ? g.actors.find((a) => a.who.toLowerCase() === q.wallet!.toLowerCase()) : undefined)
         ?? (pos ? g.actors.find((a) => a.position + 1 === pos) : undefined);
-      const input = { kind: g.kind, title: g.title, burnedWif: burn, position: pos, headline, wallet: q.wallet ?? actor?.who, ts: q.ts ?? actor?.ts };
+      const rawX = url.searchParams.get('x') ?? '';
+      const seed = /^0x[0-9a-fA-F]{16,}$/.test(rawX) ? rawX : actor?.tx;
+      const input = { kind: g.kind, title: g.title, burnedWif: burn, position: pos, headline, wallet: q.wallet ?? actor?.who, ts: q.ts ?? actor?.ts, seed };
       return { g, headline, svg: signedSvg(input), poster: signedPoster(input) };
     };
     let sm = /\/api\/score\/(0x[0-9a-fA-F]{40})$/.exec(path);
@@ -296,6 +304,163 @@ export async function handle(req: Request, env: Env = {}): Promise<Response> {
     if (sm) { const c = await votedCard(Number(sm[1]), Number(sm[2]), sm[3] ? Number(sm[3]) : undefined); return c ? svgRes(c.poster) : json({ error: 'not found' }, 404); }
     sm = /\/api\/card\/signed\/(\d+)(?:\/(\d+))?(?:\.svg)?$/.exec(path);
     if (sm) { const c = signedCard(Number(sm[1]), sm[2] ? Number(sm[2]) : undefined); return c ? svgRes(c.poster) : json({ error: 'not found' }, 404); }
+
+    // ── Pass IDs, private cards, Stocks cards (compute on demand; no per-signer KV writes) ──
+    const secret = env.PASS_SECRET;
+    const noSecret = () => json({ error: 'pass not configured' }, 503, { 'cache-control': 'no-store' });
+    const unauth = () => json({ error: 'unauthorized' }, 401, { 'cache-control': 'no-store' });
+    const collectHits = () => {
+      const dep = s.deployment;
+      const hits: { kind: 'sign'; scope: string; contract: string; id: string; wallet: string; tx: string; ts?: number; block?: number; title: string; detail?: string; creator?: string; position?: number; signKind?: number }[] = [];
+      for (const g of s.gates ?? []) {
+        for (const a of g.actors) {
+          if (!a.tx) continue;
+          hits.push({ kind: 'sign', scope: `gate:${g.id}`, contract: dep.gate, id: String(g.id), wallet: a.who, tx: a.tx, ts: a.ts, block: a.block, title: g.title, detail: `#${a.position + 1}`, creator: g.creator, position: a.position + 1, signKind: g.kind });
+        }
+      }
+      return hits;
+    };
+    const prove = async (message?: string, signature?: string) => {
+      if (!secret) return { err: noSecret() as Response };
+      const msg = message ?? url.searchParams.get('message') ?? '';
+      const sig = (signature ?? url.searchParams.get('signature') ?? '') as `0x${string}`;
+      const ch = await checkChallenge(secret, msg);
+      if (!ch || !/^0x[0-9a-fA-F]{130,}$/.test(sig)) return { err: unauth() as Response };
+      try {
+        const ok = await verifyMessage({ address: ch.address as Address, message: msg, signature: sig });
+        if (!ok) return { err: unauth() as Response };
+      } catch { return { err: unauth() as Response }; }
+      return { ch };
+    };
+    const withIds = async (hits: ReturnType<typeof collectHits>) => {
+      if (!secret) return [];
+      const chainId = s.deployment.chainId;
+      const out = [];
+      for (const h of hits) out.push({ ...h, passId: await makePassId(secret, chainId, h.contract, h.scope, h.wallet, h.tx) });
+      return out;
+    };
+
+    if (path === '/api/pass/challenge') {
+      if (!secret) return noSecret();
+      const address = url.searchParams.get('address') ?? '';
+      const purpose = url.searchParams.get('purpose') ?? 'private-pass';
+      if (!/^0x[0-9a-fA-F]{40}$/.test(address) || !/^[a-z0-9:.-]{3,80}$/.test(purpose)) return json({ error: 'bad request' }, 400);
+      const { message, issued } = await issueChallenge(secret, address, purpose);
+      return json({ message, issued }, 200, { 'cache-control': 'no-store' });
+    }
+    if (path === '/api/pass/verify' && req.method === 'GET' && !url.searchParams.get('signature')) {
+      if (!secret) return noSecret();
+      const id = (url.searchParams.get('id') ?? '').toUpperCase();
+      if (!PASS_RE.test(id)) return json({ valid: false });
+      const found = (await withIds(collectHits())).find((h) => h.passId === id);
+      if (!found) return json({ valid: false });
+      return json({ valid: true, kind: found.kind, id: found.id, scope: found.scope });
+    }
+    if (path === '/api/pass/verify' && (req.method === 'POST' || url.searchParams.get('signature'))) {
+      if (!secret) return noSecret();
+      let body: any = {};
+      if (req.method === 'POST') { try { body = await req.json(); } catch { return json({ error: 'bad json' }, 400); } }
+      const id = String(body.id ?? url.searchParams.get('id') ?? '').toUpperCase();
+      const auth = await prove(body.message, body.signature);
+      if ('err' in auth && auth.err) return auth.err;
+      const ch = 'ch' in auth ? auth.ch : undefined;
+      if (!ch || !PASS_RE.test(id)) return json({ valid: false });
+      const found = (await withIds(collectHits())).find((h) => h.passId === id);
+      if (!found) return json({ valid: false });
+      const isCreator = found.creator && found.creator.toLowerCase() === ch.address.toLowerCase();
+      const purposeOk = ch.purpose === `creator:gate:${found.id}`;
+      if (!isCreator || !purposeOk) return json({ valid: true, kind: found.kind, id: found.id, scope: found.scope }); // not the creator: no wallet
+      return json({ valid: true, kind: found.kind, id: found.id, scope: found.scope, wallet: found.wallet, ts: found.ts, tx: found.tx });
+    }
+    if (path === '/api/pass/list') {
+      if (!secret) return noSecret();
+      let body: any = {};
+      if (req.method === 'POST') { try { body = await req.json(); } catch { return json({ error: 'bad json' }, 400); } }
+      const auth = await prove(body.message, body.signature);
+      if ('err' in auth && auth.err) return auth.err;
+      const ch = 'ch' in auth ? auth.ch! : undefined as any;
+      const kind = String(body.kind ?? url.searchParams.get('kind') ?? '');
+      const id = String(body.id ?? url.searchParams.get('id') ?? '');
+      if (!ch || kind !== 'gate' || !id) return json({ error: 'bad request' }, 400);
+      if (ch.purpose !== `creator:gate:${id}`) return unauth();
+      const g = s.gates?.find((x) => String(x.id) === id);
+      if (!g || g.creator.toLowerCase() !== ch.address.toLowerCase()) return unauth();
+      const hits = collectHits().filter((h) => h.id === id);
+      const rows = await withIds(hits);
+      let names: Record<string, string> = {};
+      try {
+        const raw = env.kv ? await env.kv.get(`passnames:${id}`) : null;
+        if (typeof raw === 'string' && raw) names = JSON.parse(raw);
+      } catch {}
+      const burnedWif = Number(BigInt(g.cost) * BigInt(g.count) / 10n ** 16n) / 100;
+      return json({
+        kind, id, title: g.title, signKind: g.kind, creator: g.creator, contract: s.deployment.gate,
+        created: g.created ?? (g.start || undefined), total: rows.length, count: g.count, burnedWif,
+        exportedAt: Math.floor(Date.now() / 1000),
+        rows: rows.sort((a, b) => (a.position ?? 0) - (b.position ?? 0)).map((r, i) => ({
+          no: r.position ?? (i + 1), wallet: r.wallet, name: names[r.wallet.toLowerCase()] || '',
+          ts: r.ts, block: r.block, tx: r.tx, passId: r.passId, detail: r.detail,
+        })),
+      }, 200, { 'cache-control': 'no-store' });
+    }
+    if (path === '/api/pass/name' && req.method === 'POST') {
+      if (!secret) return noSecret();
+      if (!env.kv) return json({ error: 'not available' }, 503);
+      let body: any = {};
+      try { body = await req.json(); } catch { return json({ error: 'bad json' }, 400); }
+      const auth = await prove(body.message, body.signature);
+      if ('err' in auth && auth.err) return auth.err;
+      const ch = 'ch' in auth ? auth.ch : undefined;
+      const gateId = String(body.gateId ?? body.id ?? '');
+      const name = String(body.name ?? '').trim().replace(/\s+/g, ' ').slice(0, 40);
+      if (!ch || ch.purpose !== 'private-pass' || !gateId || !/^[\w .\-']{1,40}$/.test(name)) return json({ error: 'bad request' }, 400);
+      const g = s.gates?.find((x) => String(x.id) === gateId);
+      const acted = g?.actors.some((a) => a.who.toLowerCase() === ch.address.toLowerCase());
+      if (!g || !acted) return unauth();
+      let names: Record<string, string> = {};
+      try {
+        const raw = await env.kv.get(`passnames:${gateId}`);
+        if (raw) names = JSON.parse(typeof raw === 'string' ? raw : '{}');
+      } catch {}
+      names[ch.address.toLowerCase()] = name;
+      await env.kv.put(`passnames:${gateId}`, JSON.stringify(names));
+      return json({ ok: true, name }, 200, { 'cache-control': 'no-store' });
+    }
+
+    const stocksRole = (r: string): Exclude<PassRole, 'signed'> | null => ({ voted: 'voted', bought: 'bought', sold: 'sold', cashed: 'cashed', profit: 'profit' } as Record<string, Exclude<PassRole, 'signed'>>)[r] ?? null;
+    sm = /\/api\/(?:card|og)\/stocks\/(voted|bought|sold|cashed|profit)(?:\.svg)?$/.exec(path);
+    if (sm) {
+      const role = stocksRole(sm[1])!;
+      const q = cardMeta(url.searchParams);
+      const rawX = url.searchParams.get('x') ?? '';
+      const seed = /^0x[0-9a-fA-F]{16,}$/.test(rawX) ? rawX : undefined;
+      const detail = url.searchParams.get('detail') ?? undefined;
+      const title = url.searchParams.get('title') ?? 'Flatland Stocks';
+      const value = url.searchParams.get('value'), cost = url.searchParams.get('cost'), pct = url.searchParams.get('pct');
+      const profit = value && cost && pct ? { value, cost, pct } : undefined;
+      const input = { role, title, detail, wallet: q.wallet, ts: q.ts, seed, profit, burnedWif: role === 'voted' ? 1 : undefined };
+      const wide = path.includes('/api/og/');
+      return svgRes(wide ? stocksSvg(input) : stocksPoster(input));
+    }
+
+    
+    sm = /\/api\/card\/private\/signed\/(\d+)(?:\.svg)?$/.exec(path);
+    if (sm) {
+      const auth = await prove();
+      if ('err' in auth && auth.err) return auth.err;
+      const ch = 'ch' in auth ? auth.ch! : undefined as any;
+      if (!ch || (ch.purpose !== 'private-pass' && ch.purpose !== `creator:gate:${sm[1]}`)) return unauth();
+      const g = (s.gates ?? []).find((x) => x.id === Number(sm![1]));
+      if (!g) return json({ error: 'not found' }, 404);
+      const actor = g.actors.find((a) => a.who.toLowerCase() === ch.address.toLowerCase());
+      const rawX = url.searchParams.get('x') ?? '';
+      const tx = actor?.tx ?? (/^0x[0-9a-fA-F]{16,}$/.test(rawX) ? rawX : '');
+      if (!tx || !secret) return json({ error: 'not indexed yet' }, 409);
+      const passId = await makePassId(secret, s.deployment.chainId, s.deployment.gate, `gate:${g.id}`, ch.address, tx);
+      const input = { role: 'signed' as const, title: g.title, wallet: ch.address, passId, txHash: tx, block: actor?.block, ts: actor?.ts, detail: actor ? `#${actor.position + 1}` : undefined, kind: g.kind, seed: tx, burnedWif: Number(BigInt(g.cost) / 10n ** 16n) / 100 };
+      return svgRes(privatePoster(input));
+    }
+
     const page = (title: string, desc: string, image: string, url: string, dest: string) => {
       const esc2 = (x: string) => x.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
       const tw = env.staticTwitterImage ? appUrl + '/og-default.png' : image;
@@ -340,7 +505,7 @@ export async function handle(req: Request, env: Env = {}): Promise<Response> {
 <meta http-equiv="refresh" content="0; url=${dest}"></head><body><a href="${dest}">Open the election →</a><script>location.replace(${JSON.stringify(dest)})</script></body></html>`;
       return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=30' } });
     }
-    return json({ error: 'not found', routes: ['/api/stats', '/api/score/:address', '/share/score/:address', '/share/voted/:id/:opt', '/share/signed/:id', '/api/card/voted/:id/:opt', '/api/card/signed/:id', '/api/elections', '/api/elections/:id', '/api/og/:id.png', '/api/share/:id', 'POST /api/mcp'] }, 404);
+    return json({ error: 'not found', routes: ['/api/stats', '/api/score/:address', '/share/score/:address', '/share/voted/:id/:opt', '/share/signed/:id', '/api/card/voted/:id/:opt', '/api/card/signed/:id', '/api/card/stocks/:role', '/api/pass/challenge', '/api/pass/verify', '/api/pass/list', '/api/elections', '/api/elections/:id', '/api/og/:id.png', '/api/share/:id', 'POST /api/mcp'] }, 404);
   } catch (e) {
     return json({ error: (e as Error).message }, 502, { 'cache-control': 'no-store' });
   }

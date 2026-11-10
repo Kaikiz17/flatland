@@ -6,8 +6,9 @@ import { useWallet } from '../lib/wallet';
 import { cardQuery } from '../lib/format';
 import { appBase } from './ShareComposer';
 import { downloadPng } from '../lib/download';
+import { PrivatePass } from './PrivatePass';
 
-/** Collectible 1:1 "I signed" poster + Share on X (landscape OG) + Download PNG. */
+/** Collectible 1:1 "I signed" poster + Share on X + Download PNG + private pass. */
 export function SignedCard({ g, position }: { g: GateView; position?: number }) {
   const { cfg } = useApp();
   const w = useWallet();
@@ -16,7 +17,8 @@ export function SignedCard({ g, position }: { g: GateView; position?: number }) 
   const mine = w.address ? g.actors.find((a) => a.who.toLowerCase() === w.address!.toLowerCase()) : undefined;
   const wallet = w.address ?? mine?.who;
   const ts = mine?.ts ?? Math.floor(Date.now() / 1000);
-  const qs = cardQuery(wallet, wallet ? ts : undefined);
+  const baseQs = cardQuery(wallet, wallet ? ts : undefined);
+  const qs = mine?.tx ? `${baseQs}${baseQs ? '&' : '?'}x=${mine.tx}` : baseQs;
   const tail = `${g.id}${position ? `/${position}` : ''}`;
   const url = `${base}/share/signed/${tail}${qs}`;
   const poster = `/api/card/signed/${tail}.svg${qs}`;
@@ -32,6 +34,7 @@ export function SignedCard({ g, position }: { g: GateView; position?: number }) 
         <button className="btn sm ghost" disabled={busy} onClick={() => { setBusy(true); void downloadPng(poster, `flatland-i-signed-${g.id}.png`).finally(() => setBusy(false)); }}>{busy ? 'Saving…' : 'Download'}</button>
         <Copy text={url} label="Copy link" />
       </div>
+      <PrivatePass src={`/api/card/private/signed/${g.id}.svg${mine?.tx ? `?x=${mine.tx}` : ''}`} filename={`flatland-i-signed-${g.id}-private.png`} gateId={g.id} />
     </div>
   );
 }
