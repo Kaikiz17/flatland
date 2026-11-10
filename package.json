@@ -2,13 +2,13 @@
   "name": "flatland",
   "private": true,
   "version": "1.0.0",
-  "description": "Flatland — open, permissionless 1-wallet-1-vote protocol on the World is Fair rules, with executable outcomes and plug-in rails. Robinhood Chain.",
+  "description": "Flatland — open, permissionless 1-wallet-1-vote protocol on the World is Fair rules, with executable outcomes and plug-in rails. Built for the World is Flat community on chain 4663.",
   "workspaces": ["packages/*", "apps/*"],
   "scripts": {
     "abis": "bash scripts/gen-abis.sh",
     "test": "npm run test:sol && npm run test:ts",
     "test:sol": "cd contracts && forge test --no-match-path 'test/Fork*'",
-    "test:fork": "cd contracts && forge test --match-path 'test/Fork*' --fork-url ${RPC:-https://rpc.mainnet.chain.robinhood.com}",
+    "test:fork": "bash scripts/test-fork.sh",
     "test:ts": "npm run -ws --if-present test",
     "build:web": "npm -w apps/web run build",
     "e2e": "bash scripts/e2e-local.sh"

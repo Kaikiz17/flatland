@@ -2,7 +2,20 @@
   "name": "@flatland/indexer",
   "version": "1.0.0",
   "type": "module",
-  "scripts": { "start": "tsx src/main.ts", "test": "vitest run", "typecheck": "tsc --noEmit" },
-  "dependencies": { "@flatland/core": "*", "viem": "^2.21.0", "tsx": "^4.19.0" },
-  "devDependencies": { "typescript": "^5.6.0", "vitest": "^2.1.0", "@types/node": "^22.0.0" }
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@flatland/core": "*",
+    "tsx": "^4.19.0",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@openzeppelin/merkle-tree": "^1.0.8",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
 }

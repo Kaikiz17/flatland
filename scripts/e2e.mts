@@ -171,8 +171,12 @@ ok(paid === 30n * ONE_WIF, `all 3 prize slots claimed through proofs (${entries}
 
 say('Reputation: deposit-path voters get streak credit permissionlessly (keeper claimStanding)');
 await svc.tick();
+const counted = plan.entries.findIndex((e) => e.voter.toLowerCase() === depositHonest.account.address.toLowerCase());
+ok(counted >= 0, 'the honest deposit-path voter is in the attested set');
+const proofOk = await pub.readContract({ address: dep.flatland, abi: flatlandAbi, functionName: 'isEntry', args: [id, BigInt(chainCount + counted), depositHonest.account.address, plan.entries[counted].option, plan.proofs[counted]] });
+ok(proofOk === true, 'on-chain Merkle verification accepts the TS-built proof (leaf encoding matches)');
 const rec = (await pub.readContract({ address: dep.standing, abi: standingAbi, functionName: 'record', args: [depositHonest.account.address] })) as any;
-ok(rec.votes === 1 || plan.entries.every((e) => e.voter.toLowerCase() !== depositHonest.account.address.toLowerCase()), 'standing credited for counted deposit voters');
+ok(rec.votes === 1, 'standing credited: deposit-path voter now has 1 vote and a streak');
 
 say('"Send 1 WIF to act" rail: petition gate + widget contract hook');
 await send(creator, dep.gate, wifGateAbi, 'createGate', [0, 'Level the ground: open finance for all', 'ipfs://petition', 0n, 0n, ONE_WIF, 0]);

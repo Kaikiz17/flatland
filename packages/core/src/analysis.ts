@@ -30,18 +30,20 @@ export function analyzeElection(e: ElectionView, cr?: ClusterResult | { clusters
   }
   // onchain collapses are authoritative
   for (const c of e.collapsed) collapsedMap[c.loser.toLowerCase()] = c.keeper;
-  const chainCounted = e.chainVotes.filter((v) => !collapsedMap[v.voter.toLowerCase()]).length;
+  // e.chainVotes lists every Voted event (collapsed wallets included), so subtract the collapse map
+  const chainStanding = e.chainVotes.filter((v) => !collapsedMap[v.voter.toLowerCase()]);
   const dep = e.depositVotes.filter((v) => !collapsedMap[v.voter.toLowerCase()]);
   const attested = e.depositsSubmitted;
-  const liveTallies = e.options.map((_, o) => e.chainTally[o] ?? 0);
+  const liveTallies = e.options.map(() => 0);
+  for (const v of chainStanding) liveTallies[v.option] += 1;
   if (attested) e.options.forEach((_, o) => (liveTallies[o] += e.depositTally[o] ?? 0));
   else for (const d of dep) liveTallies[d.option] += 1;
-  const rawVoters = e.chainVotes.length + e.collapsed.length + e.depositVotes.length;
-  const counted = attested ? chainCounted + e.depositCount : chainCounted + dep.length;
+  const rawVoters = e.chainVotes.length + e.depositVotes.length;
+  const counted = chainStanding.length + (attested ? e.depositCount : dep.length);
   const collapsed = Object.keys(collapsedMap).length;
   const fairness = fairnessScore({
     tallies: liveTallies,
-    rawVoters: Math.max(rawVoters, counted + collapsed),
+    rawVoters: Math.max(rawVoters, counted),
     collapsed,
     counted,
     uniqueSources: uniqueSources ?? counted,
