@@ -24,6 +24,7 @@ contract GateTest is Base {
         vm.warp(1_794_000_000);
         w = new MockWIF();
         _deployCore(address(w));
+        _lock(new address[](0));
         _fund(alice, 100e18);
         _fund(bob, 100e18);
         _fund(carol, 100e18);
@@ -47,7 +48,7 @@ contract GateTest is Base {
         _act(alice, id);
         _act(bob, id);
         assertEq(w.totalSupply(), supply - 2e18);
-        assertEq(gate.positionOf(alice, 0) + gate.positionOf(id, alice), 1);
+        assertEq(gate.positionOf(id, alice), 1);
         vm.startPrank(carol);
         w.approve(address(gate), type(uint256).max);
         vm.expectRevert(WifGate.Full.selector);

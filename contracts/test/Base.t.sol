@@ -39,9 +39,13 @@ abstract contract Base is Test {
         entropy = new LocalEntropy();
         hub = new Flatland(wifAddr, address(entropy), address(standing), tallier);
         gate = new WifGate(wifAddr, address(standing));
-        address[] memory w = new address[](2);
+    }
+
+    function _lock(address[] memory extra) internal {
+        address[] memory w = new address[](2 + extra.length);
         w[0] = address(hub);
         w[1] = address(gate);
+        for (uint256 i; i < extra.length; ++i) w[2 + i] = extra[i];
         standing.setWriters(w);
     }
 

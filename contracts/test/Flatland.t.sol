@@ -44,6 +44,7 @@ contract FlatlandTest is Base {
         vm.warp(1_794_000_000);
         w = new MockWIF();
         _deployCore(address(w));
+        _lock(new address[](0));
         _fund(alice, 1000e18);
         _fund(bob, 1000e18);
         _fund(carol, 1000e18);
