@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { connect, disconnect, initWallets, mobileLinks, useWallet } from '../lib/wallet';
+import { connect, disconnect, getWallet, initWallets, mobileLinks, useWallet } from '../lib/wallet';
 import { useApp } from '../lib/store';
 import { short } from '../lib/format';
 
@@ -44,7 +44,7 @@ export function WalletButton() {
                   </>
                 ) : (
                   w.injected.map((i) => (
-                    <button key={i.uuid} className="wl" disabled={w.connecting} onClick={async () => { await connect(i); setOpen(false); }}>
+                    <button key={i.uuid} className="wl" disabled={w.connecting} onClick={async () => { await connect(i); if (getWallet().address) setOpen(false); }}>
                       {i.icon ? <img src={i.icon} alt="" /> : <span>🔌</span>}{i.name}
                     </button>
                   ))
