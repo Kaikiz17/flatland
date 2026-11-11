@@ -195,8 +195,11 @@ async function scanFrom(client: PublicClient, cache: LogCache, keys: string[], h
   for (let k = 0; k < keys.length; k++) {
     const mine = (l: Log) => !lows || (l.address ?? '').toLowerCase() === lows[k];
     const all = [...(valid && hits[k] ? hits[k]!.logs : []), ...fresh.filter(mine)];
-    // KV writes are scarce on the free plan: persist only when there are new logs, a first scan, or the cursor moved a lot
-    if (safe > start && (fresh.length || !valid || safe - start > 2_000n)) await cache.put(keys[k], { to: safe.toString(), logs: all.filter((l) => (l.blockNumber ?? 0n) <= safe) });
+    const safeLogs = all.filter((l) => (l.blockNumber ?? 0n) <= safe);
+    // Reorg-margin logs are re-fetched every pass, so they must not trigger a write. Persist when
+    // newly-safe logs appear, the cache is first filled, or the cursor jumped a long way (~15 min on a fast chain).
+    const newSafe = safeLogs.some((l) => (l.blockNumber ?? 0n) > start);
+    if (safe > start && (newSafe || !valid || safe - start > 10_000n)) await cache.put(keys[k], { to: safe.toString(), logs: safeLogs });
     out.push(all);
   }
   if (failure) throw failure;

@@ -1,5 +1,5 @@
 /**
- * Flatland vote robot as a Cloudflare Cron Trigger (every minute), free plan. THIN entry.
+ * Flatland vote robot as a Cloudflare Cron Trigger (every 2 minutes), free plan. THIN entry.
  *
  * Free-plan budget is 10 ms CPU and 50 subrequests per invocation, so this file imports no viem: an idle tick is one raw JSON-RPC
  * batch (nine counter reads) plus one KV read. Only when something changed, an election needs time-based work, or a periodic refresh is
@@ -53,8 +53,8 @@ async function tick(env: Env): Promise<void> {
   const quiet = cheap.sig === st.sig && now < (st.wakeAt ?? 0) && now - (st.lastFull ?? 0) < refreshEvery;
   if (quiet) {
     if (now - (st.lastBeat ?? 0) >= BEAT_EVERY_MS) {
+      // lastBeat keeps /api/status "ok" inside the 45-minute window; skip rewriting status when still idle.
       await env.KV.put('state', JSON.stringify({ ...st, lastBeat: now, lastError: null }));
-      await env.KV.put('status', JSON.stringify({ at: now, mode: 'idle', elections: cheap.electionCount, note: 'nothing changed on chain; next wake ' + (st.wakeAt >= 9e15 ? 'on change' : new Date(st.wakeAt).toISOString()), subrequests: budget.used }));
     }
     return;
   }

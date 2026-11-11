@@ -1,4 +1,4 @@
-# Flatland vote robot: Cron Trigger worker (free plan). No public fetch handler.
+# Flatland vote robot: Cron Trigger worker (free plan, every 2 minutes). No public fetch handler.
 # Secret (never committed):  npx wrangler secret put TALLIER_KEY   (key for 0xAa30...49c1)
 name = "flatland-tallier"
 main = "index.ts"
@@ -7,7 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = false
 
 [triggers]
-crons = ["* * * * *"]
+crons = ["*/2 * * * *"]
 
 [observability]
 enabled = true

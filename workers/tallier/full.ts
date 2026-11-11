@@ -51,17 +51,49 @@ function edgeTransport(urls: string[], logsUrls: string[]): Transport {
 }
 const chainFor = (rpc: string) => ({ ...robinhood, rpcUrls: { default: { http: [rpc] } } });
 
-/** Log cache in KV (bigint-safe JSON). */
-const enc = (v: unknown) => JSON.stringify(v, (_, x) => (typeof x === 'bigint' ? { $b: x.toString() } : x));
-const dec = (t: string) => JSON.parse(t, (_, x) => (x && typeof x === 'object' && '$b' in x ? BigInt(x.$b) : x));
-const kvLogCache = (kv: KVNamespace): LogCache => ({
-  get: async (k) => { const t = await kv.get('logs:' + k); return t ? dec(t) : null; },
-  put: async (k, v) => { await kv.put('logs:' + k, enc(v)); },
-});
-
 const sha = async (s: string) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))].map((b) => b.toString(16).padStart(2, '0')).join('');
 const bigSafe = (_: string, v: unknown) => (typeof v === 'bigint' ? v.toString() : v);
 const put = async (kv: KVNamespace, k: string, v: string) => { try { await kv.put(k, v); } catch (e) { console.log('kv put failed ' + k + ': ' + (e as Error).message.slice(0, 80)); } };
+
+/** Log cache in KV (bigint-safe JSON). One bundle key so a pass is 1 read + at most 1 write, not one per contract. */
+const enc = (v: unknown) => JSON.stringify(v, (_, x) => (typeof x === 'bigint' ? { $b: x.toString() } : x));
+const dec = (t: string) => JSON.parse(t, (_, x) => (x && typeof x === 'object' && '$b' in x ? BigInt(x.$b) : x));
+type LogEntry = { to: string; logs: any[] };
+function bundledLogCache(kv: KVNamespace): LogCache & { flush(): Promise<void> } {
+  let bundle: Record<string, LogEntry> | null = null;
+  let dirty = false;
+  const load = async () => {
+    if (bundle) return bundle;
+    const t = await kv.get('logs:bundle');
+    bundle = t ? (dec(t) as Record<string, LogEntry>) : {};
+    return bundle;
+  };
+  return {
+    get: async (k) => {
+      const b = await load();
+      if (b[k]) return b[k];
+      const t = await kv.get('logs:' + k); // migrate leftover per-contract keys on first miss
+      if (!t) return null;
+      const v = dec(t) as LogEntry;
+      b[k] = v;
+      dirty = true; // compact legacy per-contract keys into the bundle on the next flush
+      return v;
+    },
+    put: async (k, v) => {
+      const b = await load();
+      const prev = b[k];
+      if (prev && prev.to === v.to && enc(prev) === enc(v)) return;
+      b[k] = v;
+      dirty = true;
+    },
+    flush: async () => {
+      if (!dirty || !bundle) return;
+      await put(kv, 'logs:bundle', enc(bundle));
+      dirty = false;
+    },
+  };
+}
+
 
 class EdgeService extends FlatlandService {
   writes = 0;
@@ -83,6 +115,7 @@ class EdgeService extends FlatlandService {
 export async function fullPass(env: Env, st: any, cheap: { sig: string; electionCount: number }, now: number): Promise<void> {
   diag.length = 0;
   const urls = rpcList(env);
+  const logCache = bundledLogCache(env.KV);
   const cache = ((await env.KV.get('funding', { type: 'json' })) ?? {}) as Record<string, any>;
   let deferred = 0;
   const budgetedFetch: typeof fetch = ((i: any, init?: any) => {
@@ -93,7 +126,7 @@ export async function fullPass(env: Env, st: any, cheap: { sig: string; election
   const logs: string[] = [];
   const svc = new EdgeService(
     {
-      chain: chainFor(urls[0]), rpc: urls[0], transport: edgeTransport(urls, logsRpcList(env)), logCache: kvLogCache(env.KV), logRange: 1_000n,
+      chain: chainFor(urls[0]), rpc: urls[0], transport: edgeTransport(urls, logsRpcList(env)), logCache, logRange: 1_000n,
       deployment: dep, funding, dataDir: '/tmp/none',
       publicDataUrl: `${(env.APP_URL ?? '').replace(/\/$/, '')}/data`,
       tallierKey: env.TALLIER_KEY as `0x${string}` | undefined,
@@ -107,7 +140,7 @@ export async function fullPass(env: Env, st: any, cheap: { sig: string; election
   const before = svc.fundingCache.size;
 
   let err: string | null = null;
-  try { await svc.tick(); } catch (e) { err = redact(((e as any).shortMessage ?? (e as Error).message).split('\n')[0] + ((e as any).details ? ' | ' + String((e as any).details).slice(0, 120) : '')); console.log('tick failed: ' + err); }
+  try { await svc.tick(); } catch (e) { err = redact(((e as any).shortMessage ?? (e as Error).message).split('\n')[0] + ((e as any).details ? ' | ' + String((e as any).details).slice(0, 120) : '')); console.log('tick failed: ' + err); } finally { await logCache.flush(); }
   let snap = svc.latest;
   // the basket section degrades silently to null when an RPC call fails; never park such a snapshot
   if (snap && !snap.basket) { err = err ?? 'basket read incomplete (RPC flaky), retrying'; snap = undefined; }
@@ -139,15 +172,18 @@ export async function fullPass(env: Env, st: any, cheap: { sig: string; election
   next.lastError = err;
   const beat = now - (st.lastBeat ?? 0) >= BEAT_EVERY_MS;
   if (beat) next.lastBeat = now;
+  // Persist lastFull every successful/attempted full pass so the 5-minute open-election refresh stays accurate.
   await put(env.KV, 'state', JSON.stringify(next));
 
   const changedErr = err !== (st.lastError ?? null);
   if (beat || svc.sent.length || changedErr || deferred || !st.lastFull) {
     const prev: any = (await env.KV.get('status', { type: 'json' })) ?? {};
     const actions = [...svc.sent.map((s) => ({ ...s, at: now })), ...(prev.actions ?? [])].slice(0, 25);
-    await put(env.KV, 'status', JSON.stringify({
+    const status = {
       at: now, mode: 'full', head: snap?.head, elections: snap?.elections.length, tallier: svc.account?.address ?? null,
       tallierActive: snap?.tallier.active, error: err, deferredFundingLookups: deferred, subrequests: budget.used, recent: logs.slice(-10), rpcDiag: diag.slice(-8), actions,
-    }));
+    };
+    const slim = (x: any) => JSON.stringify({ ...x, at: 0, subrequests: 0 });
+    if (svc.sent.length || slim(prev) !== slim(status)) await put(env.KV, 'status', JSON.stringify(status));
   }
 }

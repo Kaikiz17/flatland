@@ -19,6 +19,47 @@ interface Env {
 const STALE_MS = 45 * 60_000;
 const cors = { 'access-control-allow-origin': '*' };
 
+/** Short Cache API TTL for hot public GETs. Not KV, so it does not count toward the free daily cap. */
+function cacheTtl(method: string, p: string): number {
+  if (method !== 'GET' && method !== 'HEAD') return 0;
+  if (p.startsWith('/api/pass') || p.startsWith('/api/telegram') || p.includes('/private/')) return 0;
+  if (p === '/api/img' || p === '/api/meta' || p === '/api' || p.startsWith('/api/mcp')) return 0;
+  if (p === '/api/stats' || p === '/api/elections' || /^\/api\/elections\/\d+$/.test(p)) return 20;
+  if (p.startsWith('/api/elections/') && p.endsWith('/audit')) return 30;
+  if (p.startsWith('/data/groups/')) return 30;
+  if (p.startsWith('/api/og/') || p.startsWith('/api/card/')) return 30;
+  if (p.startsWith('/share/') || p.startsWith('/v/')) return 30;
+  return 0;
+}
+
+async function withCache(req: Request, p: string, ctx: ExecutionContext, run: () => Promise<Response>): Promise<Response> {
+  const ttl = cacheTtl(req.method, p);
+  if (!ttl) return run();
+  try {
+    const cache = await caches.open('flatland-api');
+    const key = new Request(req.url, { method: 'GET' });
+    const hit = await cache.match(key);
+    if (hit) {
+      const at = Number(hit.headers.get('x-flatland-cached-at') || 0);
+      if (at && Date.now() - at < ttl * 1000) {
+        const headers = new Headers(hit.headers);
+        headers.set('x-flatland-cache', 'hit');
+        return new Response(hit.body, { status: hit.status, statusText: hit.statusText, headers });
+      }
+    }
+    const res = await run();
+    if (!res.ok) return res;
+    const headers = new Headers(res.headers);
+    headers.set('x-flatland-cached-at', String(Date.now()));
+    headers.set('x-flatland-cache', 'miss');
+    const out = new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+    ctx.waitUntil(cache.put(key, out.clone()).catch(() => {}));
+    return out;
+  } catch {
+    return run();
+  }
+}
+
 async function state(env: Env): Promise<any | null> {
   return env.KV.get('state', { type: 'json', cacheTtl: 30 });
 }
@@ -46,6 +87,11 @@ export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
     const p = url.pathname.replace(/\/+$/, '') || '/';
+    return withCache(req, p, ctx, () => serve(req, env, ctx, url, p));
+  },
+};
+
+async function serve(req: Request, env: Env, ctx: ExecutionContext, url: URL, p: string): Promise<Response> {
 
     // public audit export (Merkle entries + sybil groups) written by the tallier; also the on-chain `groupURI` target
     const audit = /^\/(?:api\/elections\/(\d+)\/audit|data\/groups\/(\d+)\.json)$/.exec(p);
@@ -92,5 +138,4 @@ export default {
       }, ctx);
     }
     return serveStatic(req, p);
-  },
-};
+}
